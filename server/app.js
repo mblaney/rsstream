@@ -1,4 +1,5 @@
 import bodyParser from "body-parser"
+import crypto from "crypto"
 import express from "express"
 import fetch from "node-fetch"
 import nodemailer from "nodemailer"
@@ -6,7 +7,7 @@ import path from "path"
 import {fileURLToPath} from "url"
 import Holster from "@mblaney/holster/src/holster.js"
 
-const holster = Holster({secure: true})
+const holster = Holster({secure: true, memoryLimit: 1536})
 const user = holster.user()
 const username = process.env.HOLSTER_USER_NAME ?? "host"
 const password = process.env.HOLSTER_USER_PASSWORD ?? "password"
@@ -32,6 +33,214 @@ const inviteCodes = new Map()
 // removeDays is a set of days where old data has already been removed so that
 // holster doesn't need to be checked every time an item is added.
 const removeDays = new Set()
+
+// Cleanup queue to batch cleanup operations
+const cleanupQueue = new Set()
+const processingCleanup = new Set() // Track days currently being processed
+let cleanupTimer = null
+
+// Application-level caching and deduplication
+
+// Request deduplication - prevent duplicate requests for same item
+const pendingRequests = new Map()
+
+// Content hash cache to avoid processing unchanged data (2-week TTL matching item age limit)
+const contentHashCache = new Map()
+const HASH_CACHE_TTL = 1209600000 // 2 weeks TTL for content hashes
+
+// Processing statistics (queue removed - now processing directly)
+let processingStats = {
+  averageProcessingTime: 0,
+  totalProcessed: 0,
+  lastProcessedTime: 0,
+  delayThreshold: 2000,
+  currentDelay: 0,
+}
+
+// Periodic cache cleanup
+setInterval(() => {
+  const now = Date.now()
+  // Clean up expired content hash cache entries
+  const hashExpiredKeys = []
+  for (const [key, value] of contentHashCache.entries()) {
+    if (now - value.timestamp > HASH_CACHE_TTL) {
+      hashExpiredKeys.push(key)
+    }
+  }
+  hashExpiredKeys.forEach(key => contentHashCache.delete(key))
+
+  // Clean up stale pending requests (over 10 minutes old)
+  const staleKeys = []
+  for (const [key, value] of pendingRequests.entries()) {
+    if (now - value.startTime > 600000) {
+      staleKeys.push(key)
+    }
+  }
+  staleKeys.forEach(key => pendingRequests.delete(key))
+
+  if (hashExpiredKeys.length + staleKeys.length > 0) {
+    console.log(
+      `Cleaned up ${hashExpiredKeys.length} content hash entries, ${staleKeys.length} stale requests`,
+    )
+  }
+}, 60000) // Every minute
+
+// Direct processing function (no queue)
+async function processItem(data, dayKey, itemKey, res) {
+  const startTime = Date.now()
+
+  try {
+    // Use Promise.all for parallel operations with timing
+    const [saveErr, removeErr] = await Promise.allSettled([
+      timeDbOperation(cb => {
+        user
+          .get("feedItems")
+          .next(data.url)
+          .next(dayKey)
+          .next(data.guid)
+          .put(data, cb)
+      }, `save-item-${data.url}`),
+      timeDbOperation(cb => {
+        const remove = {
+          guid: data.guid,
+          url: data.url,
+        }
+        user.get("remove").next(dayKey).put(remove, true, cb)
+      }, `track-cleanup-${dayKey}`),
+    ])
+
+    const processingTime = Date.now() - startTime
+    // Update processing statistics
+    processingStats.totalProcessed++
+    processingStats.averageProcessingTime =
+      (processingStats.averageProcessingTime *
+        (processingStats.totalProcessed - 1) +
+        processingTime) /
+      processingStats.totalProcessed
+    processingStats.lastProcessedTime = processingTime
+
+    // Calculate delay based on processing time
+    if (processingTime > processingStats.delayThreshold) {
+      processingStats.currentDelay = Math.max(
+        processingStats.currentDelay,
+        processingTime - processingStats.delayThreshold,
+      )
+    } else {
+      // Reduce delay when processing is fast
+      processingStats.currentDelay = Math.max(
+        0,
+        processingStats.currentDelay - 100,
+      )
+    }
+
+    if (saveErr.status === "rejected" || saveErr.value) {
+      console.log(
+        "Error saving item:",
+        saveErr.status === "rejected" ? saveErr.reason : saveErr.value,
+      )
+      res.status(500).send("Error saving item")
+    } else {
+      res.end()
+
+      // Schedule cleanup for later to avoid blocking the response
+      setImmediate(() => scheduleCleanup(Date.now() - 1209600000))
+    }
+  } catch (error) {
+    console.log("Error processing item:", error)
+    res.status(500).send("Error processing item")
+  } finally {
+    // Clean up pending request
+    pendingRequests.delete(itemKey)
+  }
+}
+
+// Performance monitoring
+let requestStats = {
+  totalRequests: 0,
+  slowRequests: 0,
+  averageTime: 0,
+  lastReset: Date.now(),
+}
+
+// Database operation monitoring
+let dbStats = {
+  totalOps: 0,
+  slowOps: 0,
+  averageDbTime: 0,
+  errorCount: 0,
+  lastReset: Date.now(),
+}
+
+// Helper function to time database operations
+function timeDbOperation(operation, operationName = "db-op") {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now()
+
+    operation((err, result) => {
+      const endTime = Date.now()
+      const duration = endTime - startTime
+
+      // Update DB stats
+      dbStats.totalOps++
+      dbStats.averageDbTime =
+        (dbStats.averageDbTime * (dbStats.totalOps - 1) + duration) /
+        dbStats.totalOps
+
+      if (err) {
+        dbStats.errorCount++
+        console.log(`[DB-ERROR] ${operationName}: ${err} (${duration}ms)`)
+        reject(err)
+      } else {
+        if (duration > 2000) {
+          // Log slow DB operations over 2 seconds
+          dbStats.slowOps++
+          console.log(`[DB-SLOW] ${operationName}: ${duration}ms`)
+        }
+        resolve(result)
+      }
+    })
+  })
+}
+
+// Memory and performance monitoring
+setInterval(() => {
+  const used = process.memoryUsage()
+  const uptime = process.uptime()
+
+  console.log(
+    `[MONITOR] Memory: ${Math.round(used.rss / 1024 / 1024)}MB RSS, ${Math.round(used.heapUsed / 1024 / 1024)}MB Heap`,
+  )
+  console.log(
+    `[MONITOR] Requests: ${requestStats.totalRequests} total, ${requestStats.slowRequests} slow (>100ms), avg: ${Math.round(requestStats.averageTime)}ms`,
+  )
+  console.log(
+    `[MONITOR] Database: ${dbStats.totalOps} ops, ${dbStats.slowOps} slow (>1s), avg: ${Math.round(dbStats.averageDbTime)}ms, errors: ${dbStats.errorCount}`,
+  )
+  console.log(
+    `[MONITOR] Processing: processed=${processingStats.totalProcessed}, avg=${Math.round(processingStats.averageProcessingTime)}ms, delay=${processingStats.currentDelay}ms, pending=${pendingRequests.size}`,
+  )
+  console.log(
+    `[MONITOR] Caches: invites=${inviteCodes.size}, removeDays=${removeDays.size}, cleanup=${cleanupQueue.size}, processing=${processingCleanup.size}, contentHash=${contentHashCache.size}`,
+  )
+  console.log(`[MONITOR] Uptime: ${Math.round(uptime)}s`)
+
+  // Reset stats every hour
+  if (Date.now() - requestStats.lastReset > 3600000) {
+    requestStats = {
+      totalRequests: 0,
+      slowRequests: 0,
+      averageTime: 0,
+      lastReset: Date.now(),
+    }
+    dbStats = {
+      totalOps: 0,
+      slowOps: 0,
+      averageDbTime: 0,
+      errorCount: 0,
+      lastReset: Date.now(),
+    }
+  }
+}, 60000) // Every minute
 
 console.log("Trying auth credentials for " + username)
 user.auth(username, password, err => {
@@ -95,6 +304,19 @@ app.get("/update-password", (req, res) => {
 // The host public key is requested by the browser so that it knows where to
 // get data from (all data is stored under user accounts when using the
 // secure flag in Holster opts).
+app.get("/health", (req, res) => {
+  const uptime = process.uptime()
+  const memUsage = process.memoryUsage()
+
+  res.json({
+    status: "ok",
+    uptime: Math.round(uptime),
+    memory: Math.round(memUsage.rss / 1024 / 1024),
+    requests: requestStats.totalRequests,
+    timestamp: Date.now(),
+  })
+})
+
 app.get("/host-public-key", (req, res) => {
   if (user.is) {
     res.send(user.is.pub)
@@ -865,6 +1087,59 @@ app.post("/private/update-feed-limit", async (req, res) => {
     })
 })
 
+app.get("/private/performance", (req, res) => {
+  const uptime = process.uptime()
+  const memUsage = process.memoryUsage()
+
+  const stats = {
+    timestamp: new Date().toISOString(),
+    uptime: Math.round(uptime),
+    memory: {
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024),
+    },
+    requests: {
+      ...requestStats,
+      slowRequestPercentage:
+        requestStats.totalRequests > 0
+          ? Math.round(
+              (requestStats.slowRequests / requestStats.totalRequests) * 100,
+            )
+          : 0,
+    },
+    database: {
+      ...dbStats,
+      slowDbPercentage:
+        dbStats.totalOps > 0
+          ? Math.round((dbStats.slowOps / dbStats.totalOps) * 100)
+          : 0,
+      errorPercentage:
+        dbStats.totalOps > 0
+          ? Math.round((dbStats.errorCount / dbStats.totalOps) * 100)
+          : 0,
+    },
+    processing: {
+      ...processingStats,
+      pendingRequests: pendingRequests.size,
+    },
+    caches: {
+      inviteCodes: inviteCodes.size,
+      removeDays: removeDays.size,
+      cleanupQueue: cleanupQueue.size,
+      contentHash: contentHashCache.size,
+    },
+    process: {
+      pid: process.pid,
+      version: process.version,
+      platform: process.platform,
+    },
+  }
+
+  res.json(stats)
+})
+
 app.post("/private/remove-feed", (req, res) => {
   if (!req.body.url) {
     res.status(400).send("url required")
@@ -898,6 +1173,8 @@ app.post("/private/remove-feed", (req, res) => {
 })
 
 app.post("/private/add-item", async (req, res) => {
+  const startTime = Date.now()
+
   if (!req.body.url) {
     res.status(400).send("url required")
     return
@@ -908,7 +1185,20 @@ app.post("/private/add-item", async (req, res) => {
     res.status(400).send("guid required")
     return
   }
+
+  const now = Date.now()
+
+  // Request deduplication - if same request is already processing
+  const itemKey = `${req.body.url}_${req.body.guid}`
+  if (pendingRequests.has(itemKey)) {
+    res.status(202).json({status: "processing", duplicate: true})
+    return
+  }
+
+  // Mark as processing
+  pendingRequests.set(itemKey, {startTime: now, res})
   if (!user.is) {
+    pendingRequests.delete(itemKey)
     res.status(500).send("Host error")
     return
   }
@@ -916,6 +1206,7 @@ app.post("/private/add-item", async (req, res) => {
   const twoWeeksAgo = Date.now() - 1209600000
   if (req.body.timestamp < twoWeeksAgo) {
     // Ignore items that are older than 2 weeks.
+    pendingRequests.delete(itemKey)
     res.end()
     return
   }
@@ -934,109 +1225,221 @@ app.post("/private/add-item", async (req, res) => {
   if (enclosure) data.enclosure = enclosure
   if (category) data.category = category
   const dayKey = day(req.body.timestamp)
-  const err = await new Promise(res => {
-    user
-      .get("feedItems")
-      .next(req.body.url)
-      .next(dayKey)
-      .next(req.body.guid)
-      .put(data, res)
-  })
-  if (err) {
-    console.log(err)
-    res.status(500).send("Error saving item")
+
+  // Content hash cache check - avoid processing if data hasn't changed
+  const contentHash = createContentHash(data)
+  const hashCacheKey = `${req.body.url}_${req.body.guid}`
+  const cachedHash = contentHashCache.get(hashCacheKey)
+
+  if (
+    cachedHash &&
+    cachedHash.hash === contentHash &&
+    now - cachedHash.timestamp < HASH_CACHE_TTL
+  ) {
+    // Content hasn't changed, skip processing
+    pendingRequests.delete(itemKey)
+    res.status(200).json({status: "unchanged", cached: true})
     return
   }
 
-  // Add the guid and url to a set for the given day to make removal easier.
-  const remove = {
-    guid: req.body.guid,
-    url: req.body.url,
+  // Aggressive throttling to reduce system load
+  const pendingDelay = pendingRequests.size * 200
+  const systemDelay =
+    processingStats.currentDelay > 0
+      ? Math.min(processingStats.currentDelay, 10000)
+      : 0
+  const totalThrottle = Math.min(pendingDelay + systemDelay, 60000)
+
+  if (totalThrottle > 0) {
+    await new Promise(resolve => setTimeout(resolve, totalThrottle))
   }
-  user
-    .get("remove")
-    .next(dayKey)
-    .put(remove, true, err => {
-      if (err) console.log(err)
-    })
-  res.end()
 
-  // Continue after response to also remove items older than 2 weeks.
-  const removeKey = day(twoWeeksAgo)
-  if (removeDays.has(removeKey)) return
+  // Log when content hash has changed and requires queue processing
+  if (cachedHash) {
+    console.log(
+      `[CONTENT-CHANGE] ${req.body.url} guid:${req.body.guid} - hash changed, queuing for processing`,
+    )
+  } else {
+    console.log(
+      `[CONTENT-NEW] ${req.body.url} guid:${req.body.guid} - new item, queuing for processing`,
+    )
+  }
 
-  removeDays.add(removeKey)
-  user.get("remove").next(removeKey, async remove => {
-    if (!remove) return
-
-    for (const item of Object.values(remove)) {
-      if (!item) continue
-
-      const err = await new Promise(res => {
-        user
-          .get("feedItems")
-          .next(item.url)
-          .next(removeKey)
-          .next(item.guid)
-          .put(null, res)
-      })
-      if (err) console.log(err)
-    }
-    // Can also remove the data on removeKey once feeds are updated.
-    user
-      .get("remove")
-      .next(removeKey)
-      .put(null, err => {
-        if (err) console.log(err)
-      })
+  // Update content hash cache for future change detection
+  contentHashCache.set(hashCacheKey, {
+    hash: contentHash,
+    timestamp: now,
   })
+
+  // Process item directly (no queue)
+  await processItem(data, dayKey, itemKey, res)
+
+  const processingTime = Date.now() - startTime
+
+  // Update performance statistics
+  requestStats.totalRequests++
+  requestStats.averageTime =
+    (requestStats.averageTime * (requestStats.totalRequests - 1) +
+      processingTime) /
+    requestStats.totalRequests
+
+  if (processingTime > 100) {
+    requestStats.slowRequests++
+    console.log(
+      `[SLOW] add-item request: ${processingTime}ms for ${req.body.url}`,
+    )
+  }
 })
+
+// Optimized cleanup scheduler to batch operations and limit memory growth
+function scheduleCleanup(twoWeeksAgo) {
+  const removeKey = day(twoWeeksAgo)
+
+  // Skip if already processed or queued
+  if (removeDays.has(removeKey) || cleanupQueue.has(removeKey)) {
+    return
+  }
+
+  cleanupQueue.add(removeKey)
+
+  // Debounce cleanup operations to batch them
+  if (cleanupTimer) {
+    clearTimeout(cleanupTimer)
+  }
+
+  cleanupTimer = setTimeout(async () => {
+    const keysToProcess = Array.from(cleanupQueue)
+    cleanupQueue.clear()
+
+    console.log(`Processing cleanup for ${keysToProcess.length} day(s)`)
+
+    for (const key of keysToProcess) {
+      if (removeDays.has(key) || processingCleanup.has(key)) continue
+
+      processingCleanup.add(key) // Mark as currently processing
+      try {
+        await processCleanupForDay(key)
+        removeDays.add(key)
+      } catch (error) {
+        console.error(`Cleanup failed for day ${key}:`, error)
+        // Re-queue for retry with exponential backoff
+        setTimeout(() => {
+          if (!removeDays.has(key)) {
+            cleanupQueue.add(key)
+            scheduleCleanup(Date.now() - 1209600000)
+          }
+        }, 5000)
+      } finally {
+        processingCleanup.delete(key) // Remove from processing set
+      }
+    }
+
+    // Limit removeDays memory growth - keep only last 30 days of tracking
+    if (removeDays.size > 30) {
+      const sortedDays = Array.from(removeDays).sort()
+      const oldestDays = sortedDays.slice(0, sortedDays.length - 30)
+      oldestDays.forEach(day => removeDays.delete(day))
+    }
+  }, 1000) // 1 second debounce
+}
+
+async function processCleanupForDay(removeKey) {
+  return new Promise(resolve => {
+    user.get("remove").next(removeKey, async remove => {
+      if (!remove) {
+        resolve()
+        return
+      }
+
+      const items = Object.values(remove).filter(item => item)
+      console.log(`Cleaning up ${items.length} items for day ${removeKey}`)
+
+      // Process cleanup in batches to avoid overwhelming the system
+      const BATCH_SIZE = 50
+      for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const batch = items.slice(i, i + BATCH_SIZE)
+
+        await Promise.allSettled(
+          batch.map(
+            item =>
+              new Promise(res => {
+                user
+                  .get("feedItems")
+                  .next(item.url)
+                  .next(removeKey)
+                  .next(item.guid)
+                  .put(null, res)
+              }),
+          ),
+        )
+
+        // Small delay between batches to prevent overwhelming the system
+        if (i + BATCH_SIZE < items.length) {
+          await new Promise(r => setTimeout(r, 10))
+        }
+      }
+
+      // Remove the cleanup tracking data (only if it existed)
+      user
+        .get("remove")
+        .next(removeKey)
+        .put(null, err => {
+          if (err && err !== "error " + removeKey + " not found") {
+            console.log(`Error removing cleanup key ${removeKey}:`, err)
+          }
+          resolve()
+        })
+    })
+  })
+}
 
 function mapEnclosure(e) {
   if (!e) return null
 
   let found = false
   let enclosure = {}
-  if (e.photo && e.photo.length !== 0) {
+
+  // Optimize by checking existence first before allocation
+  if (e.photo?.length > 0) {
     enclosure.photo = {}
-    e.photo.forEach(p => {
-      if (p.link) {
+    for (const p of e.photo) {
+      if (p?.link) {
         found = true
-        enclosure.photo[p.link] = p.alt
+        enclosure.photo[p.link] = p.alt || ""
       }
-    })
+    }
   }
-  if (e.audio && e.audio.length !== 0) {
+  if (e.audio?.length > 0) {
     enclosure.audio = {}
-    e.audio.forEach(a => {
+    for (const a of e.audio) {
       if (a) {
         found = true
         enclosure.audio[a] = true
       }
-    })
+    }
   }
-  if (e.video && e.video.length !== 0) {
+  if (e.video?.length > 0) {
     enclosure.video = {}
-    e.video.forEach(v => {
+    for (const v of e.video) {
       if (v) {
         found = true
         enclosure.video[v] = true
       }
-    })
+    }
   }
   return found ? enclosure : null
 }
 
 function mapCategory(c) {
+  if (!c?.length) return null
+
   let found = false
   let category = {}
-  if (c && c.length !== 0) {
-    c.forEach(value => {
-      if (value) {
-        found = true
-        category[value] = true
-      }
-    })
+  for (const value of c) {
+    if (value) {
+      found = true
+      category[value] = true
+    }
   }
   return found ? category : null
 }
@@ -1044,11 +1447,16 @@ function mapCategory(c) {
 function newCode() {
   const chars = "bcdfghjkmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ123456789"
 
-  var code = ""
+  let code = ""
   while (code.length < 8) {
     code += chars.charAt(Math.floor(Math.random() * chars.length))
   }
   return code
+}
+
+function createContentHash(data) {
+  const hashInput = `${data.title}|${data.content}|${data.author}|${data.permalink}`
+  return crypto.createHash("md5").update(hashInput).digest("hex")
 }
 
 function mapInviteCodes() {
@@ -1103,9 +1511,9 @@ async function checkHosts(newCodes) {
   const urls = hosts.split(",").map(url => url + "/check-codes")
   return (
     await Promise.all(
-      urls.map(url => {
+      urls.map(async url => {
         try {
-          fetch(url, {
+          const res = await fetch(url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json;charset=utf-8",
@@ -1113,14 +1521,14 @@ async function checkHosts(newCodes) {
             body: JSON.stringify({
               codes: newCodes,
             }),
-          }).then(res => {
-            if (!res.ok) {
-              console.log(`checkHosts ${res.status} from ${res.url}`)
-            }
-            return res.ok
           })
+          if (!res.ok) {
+            console.log(`checkHosts ${res.status} from ${res.url}`)
+          }
+          return res.ok
         } catch (error) {
           console.log(error)
+          return false
         }
       }),
     )

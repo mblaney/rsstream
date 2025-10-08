@@ -43,6 +43,11 @@ const redirect = params.get("redirect")
 const to = redirect ? (pages.includes(redirect) ? `/${redirect}` : "/") : ""
 
 const App = () => {
+  const getCurrentDay = () => {
+    const t = new Date()
+    return Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())
+  }
+
   const [host, setHost] = useState(() => {
     return localStorage.getItem("host") || ""
   })
@@ -53,6 +58,12 @@ const App = () => {
     return sessionStorage.getItem("mode") || "light"
   })
   const [feeds, setFeeds] = useState(new Map())
+  const [feedsLoaded, setFeedsLoaded] = useState(false)
+  const [loadedFeedUrls, setLoadedFeedUrls] = useState(new Set())
+  const [allFeedUrls, setAllFeedUrls] = useState(new Set())
+  const [backgroundUrls, setBackgroundUrls] = useState([])
+  const [backgroundIndex, setBackgroundIndex] = useState(0)
+  const [currentDayOffset, setCurrentDayOffset] = useState(1)
   const theme = useMemo(
     () =>
       createTheme({
@@ -184,6 +195,9 @@ const App = () => {
     const updateFeeds = async allFeeds => {
       if (!allFeeds) return
 
+      // Track all feed URLs that should be loaded
+      setAllFeedUrls(new Set(Object.keys(allFeeds)))
+
       for (const [url, feed] of Object.entries(allFeeds)) {
         if (!url) continue
 
@@ -218,11 +232,17 @@ const App = () => {
           })
           if (err) console.error(err)
 
-          // Also set up a listener for updates to items in the feed.
+          // Also set up a listener for updates to items in the feed. Only fetch
+          // the current day's items to avoid over-fetching historical data
+          const currentDay = getCurrentDay()
           user
             .get([host, "feedItems"])
             .next(url)
+            .next(currentDay)
             .on(items => {
+              // Mark this feed as loaded
+              setLoadedFeedUrls(loaded => new Set(loaded).add(url))
+
               if (!items) return
 
               setFeeds(
@@ -233,9 +253,13 @@ const App = () => {
                       title: feed.title,
                       image: feed.image,
                       updated: Date.now(),
-                      items: items,
+                      items: {[currentDay]: items},
                     }),
                   ),
+              )
+              // Add URL for background loading of previous 14 days
+              setBackgroundUrls(urls =>
+                urls.includes(url) ? urls : [...urls, url],
               )
             }, true)
           continue
@@ -274,6 +298,62 @@ const App = () => {
     // Listen for feed changes to apply to our own feed list.
     user.get([host, "feeds"]).on(updateFeeds, true)
   }, [host, code])
+
+  // Check if all feeds are loaded
+  useEffect(() => {
+    if (allFeedUrls.size > 0 && loadedFeedUrls.size === allFeedUrls.size) {
+      setFeedsLoaded(true)
+    }
+  }, [loadedFeedUrls, allFeedUrls])
+
+  // Processes days sequentially across all URLs with rate limiting.
+  useEffect(() => {
+    if (backgroundUrls.length === 0 || currentDayOffset > 14) return
+
+    // Add delay to respect rate limits
+    const delayTimer = setTimeout(() => {
+      const currentUrl = backgroundUrls[backgroundIndex]
+
+      // Calculate the day to fetch for current offset
+      const currentDay = getCurrentDay()
+      const dayToFetch = currentDay - currentDayOffset * 86400000
+
+      // Fetch the specific day's items for this URL
+      user
+        .get([host, "feedItems"])
+        .next(currentUrl)
+        .next(dayToFetch)
+        .next(dayItems => {
+          if (dayItems) {
+            setFeeds(f => {
+              const currentFeed = f.get(currentUrl)
+              if (!currentFeed) return f
+
+              return new Map(
+                f.set(currentUrl, {
+                  ...currentFeed,
+                  items: {
+                    ...currentFeed.items,
+                    [dayToFetch]: dayItems,
+                  },
+                }),
+              )
+            })
+          }
+
+          // Move to next URL, or next day if all URLs processed
+          if (backgroundIndex + 1 < backgroundUrls.length) {
+            setBackgroundIndex(index => index + 1)
+          } else {
+            // All URLs processed for this day, move to next day
+            setCurrentDayOffset(offset => offset + 1)
+            setBackgroundIndex(0)
+          }
+        })
+    }, 2000)
+
+    return () => clearTimeout(delayTimer)
+  }, [backgroundUrls, backgroundIndex, currentDayOffset, host])
 
   return (
     <ThemeProvider theme={theme}>
@@ -360,6 +440,7 @@ const App = () => {
                   mode={mode}
                   setMode={setMode}
                   feeds={feeds}
+                  feedsLoaded={feedsLoaded}
                 />
               ) : (
                 <Help />

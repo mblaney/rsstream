@@ -48,7 +48,7 @@ For production you can start with pm2:
  - `npm install pm2 -g`
  - `export NODE_ENV=production`
  - `pm2 startup` (And follow startup instructions.)
- - `pm2 start app.js`
+ - `pm2 start app.js --node-args="--max-old-space-size=1536"`
  - `pm2 save`
 
 This will save your environment in `~/.pm2/dump.pm2` so that it can be used on
@@ -87,3 +87,7 @@ If you modify the front end you can rebuild it by running:
  - `cd browser`
  - `npm install`
  - `npm run build`
+
+If you would like to contribute please run: `npx prettier app.js --write` from
+the server directory, or `npx prettier src --write && npm run build` from the
+browser directory.

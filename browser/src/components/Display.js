@@ -10,7 +10,7 @@ import GroupList from "./GroupList"
 import ItemList from "./ItemList"
 import SearchAppBar from "./SearchAppBar"
 
-const Display = ({user, host, code, mode, setMode, feeds}) => {
+const Display = ({user, host, code, mode, setMode, feeds, feedsLoaded}) => {
   const sortByLatest = (a, b) => b.latest - a.latest
   const [groups, updateGroup] = useReducer(reducer(sortByLatest), init)
   const day = key => {
@@ -171,7 +171,8 @@ const Display = ({user, host, code, mode, setMode, feeds}) => {
   // an interval to process new items every 10 seconds.
   useEffect(() => {
     if (!feeds || !groups) return
-    if (groupCount === 0 || groupCount !== groupsLoaded.length) return
+    if (!feedsLoaded || groupCount === 0 || groupCount !== groupsLoaded.length)
+      return
 
     const today = day()
     if (daysLoaded.current.includes(today)) return
@@ -237,7 +238,7 @@ const Display = ({user, host, code, mode, setMode, feeds}) => {
       setNewKeys(keys)
       keys = []
     }, 10000)
-  }, [feeds, groups, groupCount, groupsLoaded, setGroupStats])
+  }, [feeds, feedsLoaded, groups, groupCount, groupsLoaded, setGroupStats])
 
   // Effect that runs when a group is selected, can flag itemsCheck straight
   // away if above processing is done otherwise waits for it to finish first.
