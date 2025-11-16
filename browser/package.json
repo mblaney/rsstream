@@ -6,11 +6,11 @@
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
-    "@mblaney/holster": "^1.0.24",
+    "@mblaney/holster": "^1.0.31",
     "@mui/icons-material": "^5.14.16",
     "@mui/material": "^5.14.16",
     "@testing-library/jest-dom": "^5.17.0",
-    "@testing-library/react": "^13.4.0",
+    "@testing-library/react": "^14.0.0",
     "@testing-library/user-event": "^13.5.0",
     "html-react-parser": "^5.1.12",
     "react": "^18.2.0",
@@ -33,7 +33,8 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "./build_date.sh && react-scripts build",
-    "test": "react-scripts test",
+    "test": "vitest --run",
+    "test:ui": "vitest --ui",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -55,7 +56,11 @@
     ]
   },
   "devDependencies": {
-    "prettier": "3.3.3"
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/ui": "^3.2.4",
+    "jsdom": "^26.1.0",
+    "prettier": "3.3.3",
+    "vitest": "^3.2.4"
   },
   "prettier": {
     "semi": false,

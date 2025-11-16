@@ -3,6 +3,7 @@
 
 # storage
 /radata
+/.hash_cache.json
 
 # misc
 *~

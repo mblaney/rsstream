@@ -134,6 +134,18 @@ const FeedList = ({user, code, groups, showGroupList}) => {
     }
   }
 
+  const allDefaultFeedsAdded = () => {
+    const defaultFeedKeys = feeds.all
+      .filter(f => f.defaultGroup)
+      .map(f => f.key)
+    return (
+      defaultFeedKeys.length > 0 &&
+      defaultFeedKeys.every(key =>
+        feeds.all.some(f => f.key === key && !f.defaultGroup),
+      )
+    )
+  }
+
   const createGroup = async () => {
     if (!groupName) {
       setDisabledButton(false)
@@ -243,7 +255,7 @@ const FeedList = ({user, code, groups, showGroupList}) => {
               )}
           </List>
         </Grid>
-        {!hideDefaultFeeds && !delay && (
+        {!hideDefaultFeeds && !delay && !allDefaultFeedsAdded() && (
           <Grid item xs={12}>
             <Typography>
               Looking for feeds? Click add feed in the menu, or try some of the
@@ -280,7 +292,7 @@ const FeedList = ({user, code, groups, showGroupList}) => {
                 </Grid>
               ),
           )}
-        {!hideDefaultFeeds && !delay && (
+        {!hideDefaultFeeds && !delay && !allDefaultFeedsAdded() && (
           <Grid item xs={12}>
             <Button sx={{mt: 1}} variant="contained" onClick={dismissDefaults}>
               Dismiss Defaults

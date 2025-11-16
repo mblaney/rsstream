@@ -267,6 +267,13 @@ const EditGroup = ({user, code, groups, currentGroup, showGroupList}) => {
                   ),
               )}
           </List>
+          {feeds &&
+            feeds.all.filter(f => f.title && !group.feeds.includes(f.key))
+              .length === 0 && (
+              <Typography sx={{m: 1}}>
+                No more feeds available. Click add feed in the menu to add more.
+              </Typography>
+            )}
         </Grid>
       </Grid>
     </Container>

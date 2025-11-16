@@ -5,6 +5,7 @@ import fetch from "node-fetch"
 import nodemailer from "nodemailer"
 import path from "path"
 import {fileURLToPath} from "url"
+import fs from "fs/promises"
 import Holster from "@mblaney/holster/src/holster.js"
 
 const holster = Holster({secure: true, memoryLimit: 1536})
@@ -16,6 +17,7 @@ const addFeedUrl = process.env.ADD_FEED_URL
 const addFeedID = process.env.ADD_FEED_ID
 const addFeedApiKey = process.env.ADD_FEED_API_KEY
 const dirname = path.dirname(fileURLToPath(import.meta.url))
+const HASH_CACHE_FILE = path.join(dirname, ".hash_cache.json")
 const basicAuth = (req, res, next) => {
   const auth = (req.headers.authorization || "").split(" ")[1] || ""
   const [u, p] = Buffer.from(auth, "base64").toString().split(":")
@@ -48,6 +50,42 @@ const pendingRequests = new Map()
 const contentHashCache = new Map()
 const HASH_CACHE_TTL = 1209600000 // 2 weeks TTL for content hashes
 
+// Load hash cache from disk on startup
+async function loadHashCache() {
+  try {
+    const data = await fs.readFile(HASH_CACHE_FILE, "utf8")
+    const cached = JSON.parse(data)
+    const now = Date.now()
+
+    for (const [key, value] of Object.entries(cached)) {
+      // Only restore entries that haven't expired
+      if (now - value.timestamp <= HASH_CACHE_TTL) {
+        contentHashCache.set(key, value)
+      }
+    }
+
+    console.log(`Loaded ${contentHashCache.size} entries from hash cache`)
+  } catch (err) {
+    // File doesn't exist on first run or is corrupted - that's fine
+    if (err.code !== "ENOENT") {
+      console.log("Error loading hash cache:", err.message)
+    }
+  }
+}
+
+// Save hash cache to disk periodically
+async function saveHashCache() {
+  try {
+    const cached = {}
+    for (const [key, value] of contentHashCache.entries()) {
+      cached[key] = value
+    }
+    await fs.writeFile(HASH_CACHE_FILE, JSON.stringify(cached), "utf8")
+  } catch (err) {
+    console.log("Error saving hash cache:", err.message)
+  }
+}
+
 // Processing statistics (queue removed - now processing directly)
 let processingStats = {
   averageProcessingTime: 0,
@@ -57,8 +95,8 @@ let processingStats = {
   currentDelay: 0,
 }
 
-// Periodic cache cleanup
-setInterval(() => {
+// Periodic cache cleanup and persistence
+setInterval(async () => {
   const now = Date.now()
   // Clean up expired content hash cache entries
   const hashExpiredKeys = []
@@ -83,6 +121,9 @@ setInterval(() => {
       `Cleaned up ${hashExpiredKeys.length} content hash entries, ${staleKeys.length} stale requests`,
     )
   }
+
+  // Save hash cache to disk
+  await saveHashCache()
 }, 60000) // Every minute
 
 // Direct processing function (no queue)
@@ -157,7 +198,6 @@ async function processItem(data, dayKey, itemKey, res) {
 // Performance monitoring
 let requestStats = {
   totalRequests: 0,
-  slowRequests: 0,
   averageTime: 0,
   lastReset: Date.now(),
 }
@@ -211,10 +251,10 @@ setInterval(() => {
     `[MONITOR] Memory: ${Math.round(used.rss / 1024 / 1024)}MB RSS, ${Math.round(used.heapUsed / 1024 / 1024)}MB Heap`,
   )
   console.log(
-    `[MONITOR] Requests: ${requestStats.totalRequests} total, ${requestStats.slowRequests} slow (>100ms), avg: ${Math.round(requestStats.averageTime)}ms`,
+    `[MONITOR] Requests: ${requestStats.totalRequests} total, avg: ${Math.round(requestStats.averageTime)}ms`,
   )
   console.log(
-    `[MONITOR] Database: ${dbStats.totalOps} ops, ${dbStats.slowOps} slow (>1s), avg: ${Math.round(dbStats.averageDbTime)}ms, errors: ${dbStats.errorCount}`,
+    `[MONITOR] Database: ${dbStats.totalOps} ops, ${dbStats.slowOps} slow (>2s), avg: ${Math.round(dbStats.averageDbTime)}ms, errors: ${dbStats.errorCount}`,
   )
   console.log(
     `[MONITOR] Processing: processed=${processingStats.totalProcessed}, avg=${Math.round(processingStats.averageProcessingTime)}ms, delay=${processingStats.currentDelay}ms, pending=${pendingRequests.size}`,
@@ -228,7 +268,6 @@ setInterval(() => {
   if (Date.now() - requestStats.lastReset > 3600000) {
     requestStats = {
       totalRequests: 0,
-      slowRequests: 0,
       averageTime: 0,
       lastReset: Date.now(),
     }
@@ -243,12 +282,14 @@ setInterval(() => {
 }, 60000) // Every minute
 
 console.log("Trying auth credentials for " + username)
-user.auth(username, password, err => {
+user.auth(username, password, async err => {
   if (err) {
     console.log(err)
   } else {
     console.log(username + " logged in")
     mapInviteCodes()
+    // Load hash cache from disk to avoid reprocessing items on restart
+    await loadHashCache()
   }
 })
 
@@ -1100,15 +1141,7 @@ app.get("/private/performance", (req, res) => {
       heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
       external: Math.round(memUsage.external / 1024 / 1024),
     },
-    requests: {
-      ...requestStats,
-      slowRequestPercentage:
-        requestStats.totalRequests > 0
-          ? Math.round(
-              (requestStats.slowRequests / requestStats.totalRequests) * 100,
-            )
-          : 0,
-    },
+    requests: requestStats,
     database: {
       ...dbStats,
       slowDbPercentage:
@@ -1274,7 +1307,7 @@ app.post("/private/add-item", async (req, res) => {
   // Process item directly (no queue)
   await processItem(data, dayKey, itemKey, res)
 
-  const processingTime = Date.now() - startTime
+  const processingTime = Date.now() - startTime - totalThrottle
 
   // Update performance statistics
   requestStats.totalRequests++
@@ -1282,13 +1315,6 @@ app.post("/private/add-item", async (req, res) => {
     (requestStats.averageTime * (requestStats.totalRequests - 1) +
       processingTime) /
     requestStats.totalRequests
-
-  if (processingTime > 100) {
-    requestStats.slowRequests++
-    console.log(
-      `[SLOW] add-item request: ${processingTime}ms for ${req.body.url}`,
-    )
-  }
 })
 
 // Optimized cleanup scheduler to batch operations and limit memory growth

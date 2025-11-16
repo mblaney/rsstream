@@ -1,0 +1,40 @@
+name: Browser Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'browser/**'
+      - '.github/workflows/test-browser.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'browser/**'
+      - '.github/workflows/test-browser.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: 'browser/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./browser
+
+      - name: Run browser tests
+        run: npm test
+        working-directory: ./browser

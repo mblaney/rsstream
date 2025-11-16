@@ -65,7 +65,7 @@ const Item = ({item, itemRefs, newFrom}) => {
           </Typography>
         )}
         {item.content && stripped.length > 1200 && showMore && (
-          <Typography>
+          <Typography component="div">
             {parse(item.content)}{" "}
             <Link
               component="button"
@@ -91,7 +91,7 @@ const Item = ({item, itemRefs, newFrom}) => {
           </Typography>
         )}
         {item.content && stripped.length <= 1200 && (
-          <Typography>{parse(item.content)}</Typography>
+          <Typography component="div">{parse(item.content)}</Typography>
         )}
         {item.enclosure &&
           item.enclosure.photo &&
