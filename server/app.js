@@ -93,6 +93,7 @@ let processingStats = {
   lastProcessedTime: 0,
   delayThreshold: 2000,
   currentDelay: 0,
+  lastReset: Date.now(),
 }
 
 // Periodic cache cleanup and persistence
@@ -264,8 +265,8 @@ setInterval(() => {
   )
   console.log(`[MONITOR] Uptime: ${Math.round(uptime)}s`)
 
-  // Reset stats every hour
-  if (Date.now() - requestStats.lastReset > 3600000) {
+  // Reset stats once per day
+  if (Date.now() - requestStats.lastReset > 86400000) {
     requestStats = {
       totalRequests: 0,
       averageTime: 0,
@@ -276,6 +277,14 @@ setInterval(() => {
       slowOps: 0,
       averageDbTime: 0,
       errorCount: 0,
+      lastReset: Date.now(),
+    }
+    processingStats = {
+      averageProcessingTime: 0,
+      totalProcessed: 0,
+      lastProcessedTime: 0,
+      delayThreshold: 2000,
+      currentDelay: 0,
       lastReset: Date.now(),
     }
   }
