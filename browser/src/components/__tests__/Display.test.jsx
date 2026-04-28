@@ -1,74 +1,278 @@
-import React from "react"
-import {describe, it, expect, beforeEach, vi} from "vitest"
-import {render, screen} from "@testing-library/react"
-import Holster from "@mblaney/holster/src/holster.js"
-import Display from "../Display"
 import {
-  createMockHolsterWebSocket,
-  initializeTestAuthData,
-} from "./holster-mock.js"
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  beforeAll,
+} from "vitest"
+import {render, screen, waitFor} from "@testing-library/react"
+import Display from "../Display"
+import {createTestUser} from "../../__tests__/setup"
 
 describe("Display Component", () => {
   let user
-  let holster
+  let mockSetMode
 
-  beforeEach(async () => {
-    // Initialize real SEA-encrypted test data once
-    await initializeTestAuthData()
-
-    // Create a real Holster instance with our mock WebSocket
-    // Mock the global WebSocket constructor that Holster uses for client connections
-    globalThis.WebSocket = createMockHolsterWebSocket
-    holster = Holster()
-
-    // Get a user instance
-    user = holster.user()
-
-    // Authenticate the user using the real Holster auth flow
-    await new Promise((resolve, reject) => {
-      user.auth("testuser", "testpassword", err => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve()
-        }
-      })
-
-      // Set a timeout to fail if auth doesn't complete
-      setTimeout(() => reject(new Error("Auth timeout")), 5000)
-    })
+  beforeAll(async () => {
+    user = await createTestUser()
   })
 
-  afterEach(() => {
-    // Clean up Holster connections and pending operations
-    vi.clearAllTimers()
+  let mockRequestMoreHistory
+  let mockRequestDay
+
+  beforeEach(() => {
+    mockSetMode = vi.fn()
+    mockRequestMoreHistory = vi.fn()
+    mockRequestDay = vi.fn()
     vi.clearAllMocks()
+    vi.clearAllTimers()
   })
 
-  const defaultProps = {
-    user: null,
-    code: "test-code",
-    host: "http://localhost",
-    modeSwitch: false,
-    setModeSwitch: vi.fn(),
-    darkMode: false,
-    setDarkMode: vi.fn(),
-    feedsLoaded: true,
-    feeds: new Map(),
-  }
+  afterEach(async () => {
+    vi.clearAllMocks()
+    vi.clearAllTimers()
+    localStorage.clear()
+    sessionStorage.clear()
+    // Allow pending timers to complete before cleanup
+    await new Promise(resolve => setTimeout(resolve, 100))
+  })
 
-  it("should render without crashing", () => {
-    const props = {...defaultProps, user}
-    const {container} = render(<Display {...props} />)
+  it("should render without crashing when user is authenticated", () => {
+    const {container} = render(
+      <Display
+        user={user}
+        host="localhost"
+        code="test-code"
+        mode="light"
+        setMode={mockSetMode}
+        feeds={{}}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
     expect(container).toBeTruthy()
   })
 
-  it("should handle authenticated user", () => {
-    const props = {
-      ...defaultProps,
-      user,
+  it("should render with authenticated user", () => {
+    const {container} = render(
+      <Display
+        user={user}
+        host="localhost:3000"
+        code="abc123"
+        mode="light"
+        setMode={mockSetMode}
+        feeds={{}}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+    expect(user.is).toBeTruthy()
+  })
+
+  it("should set up interval for checking new items on mount", async () => {
+    const setIntervalSpy = vi.spyOn(global, "setInterval")
+
+    render(
+      <Display
+        user={user}
+        host="localhost"
+        code="test-code"
+        mode="light"
+        setMode={mockSetMode}
+        feeds={{}}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 10000)
+    })
+
+    setIntervalSpy.mockRestore()
+  })
+
+  it("should clean up interval on unmount", () => {
+    const clearIntervalSpy = vi.spyOn(global, "clearInterval")
+
+    const {unmount} = render(
+      <Display
+        user={user}
+        host="localhost"
+        code="test-code"
+        mode="light"
+        setMode={mockSetMode}
+        feeds={{}}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
+    unmount()
+
+    expect(clearIntervalSpy).toHaveBeenCalled()
+
+    clearIntervalSpy.mockRestore()
+  })
+
+  it("should set up popstate event listener", async () => {
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener")
+
+    render(
+      <Display
+        user={user}
+        host="localhost"
+        code="test-code"
+        mode="light"
+        setMode={mockSetMode}
+        feeds={{}}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(addEventListenerSpy).toHaveBeenCalledWith(
+        "popstate",
+        expect.any(Function),
+      )
+    })
+
+    addEventListenerSpy.mockRestore()
+  })
+
+  it("should render ItemList component", () => {
+    const {container} = render(
+      <Display
+        user={user}
+        host="localhost"
+        code="test-code"
+        mode="light"
+        setMode={mockSetMode}
+        feeds={{}}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
+    // Container should have Grid elements from ItemList
+    expect(container.querySelector(".MuiContainer-root")).toBeTruthy()
+  })
+
+  it("should handle empty feeds", () => {
+    const {container} = render(
+      <Display
+        user={user}
+        host="localhost"
+        code="test-code"
+        mode="light"
+        setMode={mockSetMode}
+        feeds={{}}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should handle feeds with items", async () => {
+    const dayKey = Date.UTC(
+      new Date().getUTCFullYear(),
+      new Date().getUTCMonth(),
+      new Date().getUTCDate(),
+    )
+
+    const feeds = {
+      "https://example.com/feed": {
+        url: "https://example.com/feed",
+        title: "Test Feed",
+        items: {
+          [dayKey]: {
+            "item-1": {
+              title: "Test Article",
+              content: "Test content here",
+              timestamp: Date.now(),
+              author: "Test Author",
+            },
+          },
+        },
+      },
     }
-    const {container} = render(<Display {...props} />)
+
+    const {container} = render(
+      <Display
+        user={user}
+        host="localhost"
+        code="test-code"
+        mode="light"
+        setMode={mockSetMode}
+        feeds={feeds}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should pass mode and setMode props to SearchAppBar", () => {
+    render(
+      <Display
+        user={user}
+        host="localhost"
+        code="test-code"
+        mode="dark"
+        setMode={mockSetMode}
+        feeds={{}}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
+    // Component should render with given mode
+    expect(mockSetMode).not.toHaveBeenCalled()
+  })
+
+  it("should initialize with group list displayed", () => {
+    const {container} = render(
+      <Display
+        user={user}
+        host="localhost"
+        code="test-code"
+        mode="light"
+        setMode={mockSetMode}
+        feeds={{}}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+        requestDay={mockRequestDay}
+      />,
+    )
+
     expect(container).toBeTruthy()
   })
 })

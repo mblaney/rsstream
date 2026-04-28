@@ -22,7 +22,7 @@ import SearchAppBar from "./SearchAppBar"
 
 const Settings = ({user, host, code, mode, setMode}) => {
   const [name] = useState(() => {
-    return sessionStorage.getItem("name") || ""
+    return sessionStorage.getItem("name") || localStorage.getItem("name") || ""
   })
   const [invites, setInvites] = useState([])
   const [password, setPassword] = useState("")
@@ -36,36 +36,43 @@ const Settings = ({user, host, code, mode, setMode}) => {
     if (!user || !host || !code) return
 
     const updated = new Map()
+    let secret = null
+
+    const update = async codes => {
+      if (!codes || !secret) return
+
+      for (const [key, enc] of Object.entries(codes)) {
+        if (!key) continue
+
+        if (enc) {
+          updated.set(key, {
+            key: key,
+            code: await user.SEA.decrypt(enc, secret),
+          })
+        } else {
+          updated.delete(key)
+        }
+      }
+      setInvites([...updated.values()])
+    }
+
     user.get([host, "epub"], async epub => {
       if (!epub) {
         console.error("No epub for host!")
         return
       }
 
-      const secret = await user.SEA.secret({epub: epub}, user.is)
-      const update = async codes => {
-        if (!codes) return
-
-        for (const [key, enc] of Object.entries(codes)) {
-          if (!key) continue
-
-          if (enc) {
-            updated.set(key, {
-              key: key,
-              code: await user.SEA.decrypt(enc, secret),
-            })
-          } else {
-            updated.delete(key)
-          }
-        }
-        setInvites([...updated.values()])
-      }
+      secret = await user.SEA.secret({epub: epub}, user.is)
       user
         .get([host, "shared"])
         .next("invite_codes")
         .next(code)
         .on(update, true)
     })
+
+    return () => {
+      user.get([host, "shared"]).next("invite_codes").next(code).off(update)
+    }
   }, [user, host, code])
 
   const select = target => {
@@ -231,6 +238,8 @@ const Settings = ({user, host, code, mode, setMode}) => {
                     user.leave()
                     sessionStorage.removeItem("name")
                     sessionStorage.removeItem("code")
+                    localStorage.removeItem("name")
+                    localStorage.removeItem("code")
                     window.location = "/login"
                   }}
                 >

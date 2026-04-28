@@ -1,4 +1,4 @@
-import {useState} from "react"
+import {useRef, useState} from "react"
 import {styled, alpha} from "@mui/material/styles"
 import {red} from "@mui/material/colors"
 import AppBar from "@mui/material/AppBar"
@@ -18,7 +18,9 @@ import MoreIcon from "@mui/icons-material/MoreVert"
 import RssFeedIcon from "@mui/icons-material/RssFeed"
 import SearchIcon from "@mui/icons-material/Search"
 
-const Search = styled("div")(({theme}) => ({
+const Search = styled("div", {
+  shouldForwardProp: prop => prop !== "collapsed",
+})(({theme, collapsed}) => ({
   position: "relative",
   borderRadius: theme.shape.borderRadius,
   backgroundColor: alpha(theme.palette.common.white, 0.15),
@@ -27,7 +29,11 @@ const Search = styled("div")(({theme}) => ({
   },
   marginRight: theme.spacing(2),
   marginLeft: 0,
-  width: "100%",
+  width: collapsed ? theme.spacing(7) : "100%",
+  ...(collapsed && {
+    transition: theme.transitions.create("width"),
+    "&:focus-within": {width: "auto"},
+  }),
   [theme.breakpoints.up("sm")]: {
     marginLeft: theme.spacing(3),
     width: "auto",
@@ -44,14 +50,24 @@ const SearchIconWrapper = styled("div")(({theme}) => ({
   justifyContent: "center",
 }))
 
-const StyledInputBase = styled(InputBase)(({theme}) => ({
+const StyledInputBase = styled(InputBase, {
+  shouldForwardProp: prop => prop !== "collapsed",
+})(({theme, collapsed}) => ({
   color: "inherit",
   "& .MuiInputBase-input": {
     padding: theme.spacing(1, 1, 1, 0),
-    // vertical padding + font size from searchIcon
     paddingLeft: `calc(1em + ${theme.spacing(4)})`,
     transition: theme.transitions.create("width"),
-    width: "100%",
+    width: collapsed ? 0 : "100%",
+    ...(collapsed && {
+      "&:focus": {width: "8ch"},
+    }),
+    [theme.breakpoints.up("sm")]: {
+      width: "12ch",
+      "&:focus": {
+        width: "20ch",
+      },
+    },
     [theme.breakpoints.up("md")]: {
       width: "20ch",
     },
@@ -68,6 +84,7 @@ const SearchAppBar = ({
   setMode,
   title,
 }) => {
+  const searchInputRef = useRef(null)
   const [anchorEl, setAnchorEl] = useState(null)
   const [mobileMoreAnchorEl, setMobileMoreAnchorEl] = useState(null)
 
@@ -254,16 +271,21 @@ const SearchAppBar = ({
               rsstream
             </Typography>
           )}
-          <Search>
+          <Box sx={{flexGrow: 1}} />
+          <Search
+            collapsed={!!title}
+            onClick={() => searchInputRef.current?.focus()}
+          >
             <SearchIconWrapper>
               <SearchIcon />
             </SearchIconWrapper>
             <StyledInputBase
+              collapsed={!!title}
+              inputRef={searchInputRef}
               placeholder="Search…"
               inputProps={{"aria-label": "search"}}
             />
           </Search>
-          <Box sx={{flexGrow: 1}} />
           <Box sx={{display: {xs: "none", md: "flex"}}}>
             <Switch checked={mode === "dark"} onChange={changeMode} />
           </Box>

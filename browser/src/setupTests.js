@@ -13,6 +13,17 @@ import "@testing-library/jest-dom"
 import {expect, afterEach, vi} from "vitest"
 import {cleanup} from "@testing-library/react"
 
+// Mock indexedDB to prevent initialization errors in tests
+if (!globalThis.indexedDB) {
+  globalThis.indexedDB = {
+    open: vi.fn(() => ({
+      onupgradeneeded: null,
+      onsuccess: null,
+      onerror: null,
+    })),
+  }
+}
+
 // Cleanup after each test
 afterEach(() => {
   cleanup()
@@ -51,4 +62,13 @@ global.IntersectionObserver = class IntersectionObserver {
   takeRecords() {
     return []
   }
+}
+
+// Mock scrollIntoView and scrollTo (not implemented in jsdom)
+window.HTMLElement.prototype.scrollIntoView = vi.fn()
+window.scrollTo = vi.fn()
+
+// Mock window.history.pushState
+if (window.history && !window.history.pushState) {
+  window.history.pushState = vi.fn()
 }

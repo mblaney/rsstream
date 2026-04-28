@@ -1,6 +1,5 @@
 import {red} from "@mui/material/colors"
 import Avatar from "@mui/material/Avatar"
-import Box from "@mui/material/Box"
 import ListItem from "@mui/material/ListItem"
 import ListItemAvatar from "@mui/material/ListItemAvatar"
 import ListItemButton from "@mui/material/ListItemButton"
@@ -34,20 +33,22 @@ const Group = ({group, setGroup}) => {
         </ListItemAvatar>
         <ListItemText
           primary={
-            <Box sx={{display: "flex"}}>
-              <Typography variant="h6" sx={{flexGrow: 1}}>
-                {group.key}
-              </Typography>
-              <Typography variant="body2" sx={{color: "text.secondary"}}>
+            <Typography variant="h6" component="div" sx={{display: "flex"}}>
+              <span style={{flexGrow: 1}}>{group.key}</span>
+              <Typography
+                variant="body2"
+                sx={{color: "text.secondary"}}
+                component="span"
+              >
                 {formatDate(group.timestamp)}
               </Typography>
-            </Box>
+            </Typography>
           }
           secondary={
-            <Box sx={{display: "flex"}}>
-              <Typography sx={{flexGrow: 1}}>
+            <Typography component="div" sx={{display: "flex"}}>
+              <span style={{flexGrow: 1}}>
                 {`${group.author && `${group.author}: `}${group.text}`}
-              </Typography>
+              </span>
               {group.count > 0 && (
                 <Avatar
                   sx={theme => ({
@@ -62,7 +63,7 @@ const Group = ({group, setGroup}) => {
                   {group.count}
                 </Avatar>
               )}
-            </Box>
+            </Typography>
           }
         />
       </ListItemButton>

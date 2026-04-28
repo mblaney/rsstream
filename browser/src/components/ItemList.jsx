@@ -1,35 +1,57 @@
 import {useCallback, useEffect, useReducer, useRef, useState} from "react"
+import Box from "@mui/material/Box"
+import CircularProgress from "@mui/material/CircularProgress"
 import Container from "@mui/material/Container"
 import Grid from "@mui/material/Grid"
 import {init, reducer} from "../utils/reducer.js"
+import {getGroupItems} from "../utils/getGroupItems.js"
+import {logEvent} from "../utils/debugEvents"
 import Item from "./Item"
 
 const ItemList = ({
   group,
-  groups,
-  setGroupStats,
-  resetGroup,
-  currentKeys,
-  newKeys,
-  itemFeeds,
-  loadMoreItems,
   feeds,
-  updateStart,
-  setUpdateStart,
+  newItems,
+  setMessage,
+  requestMoreHistory,
+  historyDayLoaded,
+  maxHistoryReached,
 }) => {
   const sort = (a, b) => a.timestamp - b.timestamp
   const [items, updateItem] = useReducer(reducer(sort), init)
-  const [groupKey, setGroupKey] = useState("")
+  const feedsRef = useRef(feeds)
+  feedsRef.current = feeds
+  const groupKeyRef = useRef("")
   const [newFrom, setNewFrom] = useState(0)
   const [scrollToEnd, setScrollToEnd] = useState(false)
-  const itemListRef = useRef()
+  const [loading, setLoading] = useState(false)
   const itemRefs = useRef(new Map())
-  const firstKeyIndex = useRef(0)
-  const loadKeyIndex = useRef(10)
+  const itemsRef = useRef(items)
+  const oldestTimestampRef = useRef(Date.now())
   const lastKey = useRef(Date.now())
-  const loadMore = useRef(0)
   const watchStart = useRef()
   const watchEnd = useRef()
+  const needsMoreItemsRef = useRef(false)
+  const isMountedRef = useRef(true)
+  const newItemsBaseRef = useRef(0)
+  const maxHistoryReachedRef = useRef(maxHistoryReached)
+
+  // Cleanup mounted flag on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  // Keep itemsRef in sync so setupLoadMoreObserver always has the latest items
+  // without items.all being a dependency that causes re-renders.
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+
+  useEffect(() => {
+    maxHistoryReachedRef.current = maxHistoryReached
+  }, [maxHistoryReached])
 
   const mapEnclosure = useCallback(e => {
     if (!e) return null
@@ -58,9 +80,7 @@ const ItemList = ({
   useEffect(() => {
     if (!scrollToEnd || items.all.length === 0) return
 
-    if (itemListRef.current) {
-      itemListRef.current.scrollIntoView({block: "end"})
-    }
+    window.scrollTo(0, document.body.scrollHeight)
     document.body.onscroll = () => {
       setTimeout(() => {
         setScrollToEnd(false)
@@ -69,210 +89,328 @@ const ItemList = ({
     }
   }, [scrollToEnd, items])
 
-  useEffect(() => {
-    if (!updateStart) return
+  const renderItems = useCallback(
+    items => {
+      const feeds = feedsRef.current
+      for (const item of items) {
+        const feed = feeds[item.feedUrl]
+        if (!feed || !feed.items || !feed.items[item.day]) continue
 
-    setUpdateStart(false)
-
-    const update = async () => {
-      // Stop watching the current target item.
-      const target = itemRefs.current.get(loadMore.current)
-      if (target && watchStart.current) watchStart.current.unobserve(target)
-
-      while (firstKeyIndex.current < loadKeyIndex.current) {
-        if (firstKeyIndex.current >= currentKeys.length) break
-
-        const key = currentKeys[firstKeyIndex.current++]
-        if (!key) continue
-
-        const {url, day} = itemFeeds.get(key)
-        if (!url || !day) continue
-
-        const feed = feeds.get(url)
-        if (!feed || !feed.items || !feed.items[day]) continue
-
-        const item = feed.items[day][key]
-        if (!item) continue
+        const feedItem = feed.items[item.day][item.key]
+        if (!feedItem) continue
 
         updateItem({
-          key,
-          title: item.title,
-          content: item.content,
-          author: item.author,
-          category: item.category ? Object.keys(item.category) : null,
-          enclosure: mapEnclosure(item.enclosure),
-          permalink: item.permalink,
-          guid: item.guid,
-          timestamp: item.timestamp,
+          key: item.key,
+          title: feedItem.title,
+          content: feedItem.content,
+          author: feedItem.author,
+          category: feedItem.category ? Object.keys(feedItem.category) : null,
+          enclosure: mapEnclosure(feedItem.enclosure),
+          permalink: feedItem.permalink,
+          guid: feedItem.guid,
+          timestamp: feedItem.timestamp,
           feedUrl: feed.url,
           feedTitle: feed.title ? feed.title : "",
           feedImage: feed.image ? feed.image : "",
-          url: item.url,
+          url: feedItem.url,
         })
       }
-      // Wait for the ref to be added for the new loadMore item.
-      setTimeout(() => {
-        watchStart.current = new IntersectionObserver(e => {
-          if (e[0].isIntersecting) {
-            // Load 10 items before current first key.
-            loadKeyIndex.current = firstKeyIndex.current + 10
-            // currentKeys is the available keys for the group and itemRefs is
-            // the items that have already been rendered.
-            if (currentKeys.length - itemRefs.current.size <= 10) {
-              // loadMoreItems sets updateStart.
-              loadMoreItems()
-            } else {
-              setUpdateStart(true)
-            }
-          }
+    },
+    [mapEnclosure],
+  )
+
+  // Set up intersection observer for loading more items when scrolling back
+  const setupLoadMoreObserver = useCallback(() => {
+    // Clear old observer
+    if (watchStart.current) {
+      watchStart.current.disconnect()
+    }
+
+    watchStart.current = new IntersectionObserver(e => {
+      logEvent("OBSERVER_FIRED", {
+        isIntersecting: e[0].isIntersecting,
+        oldestTimestamp: oldestTimestampRef.current,
+      })
+      if (e[0].isIntersecting) {
+        // Preemptively request the next historical day whenever scrolling back
+        requestMoreHistory()
+
+        // Get next batch of older items
+        const olderItems = getGroupItems(
+          group,
+          feedsRef.current,
+          oldestTimestampRef.current,
+          10,
+        )
+        logEvent("LOAD_MORE", {
+          found: olderItems.length,
+          oldestTimestamp: oldestTimestampRef.current,
         })
-        // Find a new target to trigger loading more items. Aim for the third
-        // item from the top, but may not be enough items.
-        let aim = 0
-        for (let i = firstKeyIndex.current; i >= 0; i--) {
-          const target = itemRefs.current.get(currentKeys[i])
-          if (target) {
-            watchStart.current.observe(target)
-            loadMore.current = currentKeys[i]
-            if (aim++ === 3) break
+
+        if (olderItems.length > 0) {
+          renderItems(olderItems)
+          oldestTimestampRef.current =
+            olderItems[olderItems.length - 1].timestamp
+          // Setup observer for next scroll back
+          const timeoutId = setTimeout(() => {
+            if (isMountedRef.current) {
+              setupLoadMoreObserver()
+            }
+          }, 500)
+          return () => clearTimeout(timeoutId)
+        } else if (isMountedRef.current) {
+          if (maxHistoryReachedRef.current) {
+            setLoading(false)
+            setMessage("No more items available for this group.")
+          } else {
+            setLoading(true)
+            needsMoreItemsRef.current = true
           }
         }
-      }, 1000)
+      }
+    })
+
+    // Observe the first few oldest items (at the top) so scrolling up triggers loading more.
+    let aim = 0
+    const observed = []
+    for (let i = 0; i < itemsRef.current.all.length; i++) {
+      const target = itemRefs.current.get(itemsRef.current.all[i].key)
+      if (target) {
+        watchStart.current.observe(target)
+        observed.push(itemsRef.current.all[i].key)
+        if (aim++ === 3) break
+      }
     }
-    update()
+    logEvent("OBSERVER_SETUP", {observing: observed.length, keys: observed})
+  }, [group, renderItems, setMessage, isMountedRef, requestMoreHistory])
+
+  // When a historical day finishes loading, check for new items. If the
+  // observer was stuck waiting (needsMoreItemsRef), render and reset it, or
+  // cascade to the next day if this day had nothing for the current group.
+  useEffect(() => {
+    if (!historyDayLoaded || !group || !needsMoreItemsRef.current) return
+
+    const olderItems = getGroupItems(
+      group,
+      feedsRef.current,
+      oldestTimestampRef.current,
+      10,
+    )
+
+    logEvent("HISTORY_DAY_CHECK", {
+      group: group.key,
+      historyDayLoaded,
+      from: oldestTimestampRef.current,
+      found: olderItems.length,
+      maxHistoryReached,
+    })
+
+    if (olderItems.length > 0) {
+      needsMoreItemsRef.current = false
+      setLoading(false)
+      renderItems(olderItems)
+      oldestTimestampRef.current = olderItems[olderItems.length - 1].timestamp
+      setTimeout(() => {
+        if (isMountedRef.current) setupLoadMoreObserver()
+      }, 500)
+    } else if (maxHistoryReached) {
+      needsMoreItemsRef.current = false
+      setLoading(false)
+      setMessage("No more items available for this group.")
+    } else {
+      requestMoreHistory()
+    }
   }, [
-    updateStart,
-    setUpdateStart,
-    loadMoreItems,
-    currentKeys,
-    itemFeeds,
-    feeds,
-    mapEnclosure,
+    historyDayLoaded,
+    group,
+    renderItems,
+    setupLoadMoreObserver,
+    requestMoreHistory,
+    maxHistoryReached,
+    setMessage,
   ])
 
+  // When group changes, reset and load initial items
   useEffect(() => {
     if (!group) {
-      firstKeyIndex.current = 0
-      loadKeyIndex.current = 10
-      loadMore.current = 0
       updateItem({reset: true})
-      setNewFrom(0)
-      setGroupKey("")
+      if (isMountedRef.current) {
+        setNewFrom(0)
+        setLoading(false)
+        setMessage("")
+      }
+      groupKeyRef.current = ""
+      oldestTimestampRef.current = Date.now()
+      needsMoreItemsRef.current = false
       return
     }
 
-    if (groupKey === group.key || currentKeys.length === 0) return
+    if (groupKeyRef.current === group.key) return
+    groupKeyRef.current = group.key
+    newItemsBaseRef.current = newItems ? newItems.length : 0
 
-    setGroupKey(group.key)
-    resetGroup(group.key)
-    setScrollToEnd(true)
-    setUpdateStart(true)
-  }, [group, groupKey, currentKeys, resetGroup, setUpdateStart])
+    if (isMountedRef.current) {
+      setScrollToEnd(true)
+      setLoading(true)
+      setMessage("")
+    }
 
+    const from = Date.now()
+    const initialItems = getGroupItems(group, feedsRef.current, from, 10)
+
+    // Log what days are loaded for this group's feeds and what was found
+    const loadedDays = {}
+    for (const feedUrl of group.feeds || []) {
+      const feed = feedsRef.current[feedUrl]
+      loadedDays[feedUrl] = feed && feed.items ? Object.keys(feed.items) : []
+    }
+    logEvent("GROUP_OPEN", {
+      group: group.key,
+      latest: group.latest,
+      latestDay: (() => {
+        const t = new Date(group.latest || 0)
+        return Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())
+      })(),
+      from,
+      found: initialItems.length,
+      loadedDays,
+    })
+
+    // Reset state
+    updateItem({reset: true})
+    oldestTimestampRef.current = from
+
+    // Load initial items
+    if (initialItems.length > 0) {
+      renderItems(initialItems)
+      oldestTimestampRef.current =
+        initialItems[initialItems.length - 1].timestamp
+      setLoading(false)
+      // Set up observer after items are rendered
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          setupLoadMoreObserver()
+        }
+      }, 100)
+      return () => clearTimeout(timeoutId)
+    }
+
+    if (maxHistoryReached) {
+      setLoading(false)
+      setMessage("No more items available for this group.")
+    } else {
+      requestMoreHistory()
+      needsMoreItemsRef.current = true
+    }
+  }, [
+    group,
+    newItems,
+    renderItems,
+    setupLoadMoreObserver,
+    setMessage,
+    maxHistoryReached,
+    requestMoreHistory,
+  ])
+
+  // When feeds change and a group is open, render any items that have arrived in
+  // feedsRef but haven't been rendered yet. This catches two cases:
+  //   1. requestDay items whose timestamps are <= g.latest, so checkForNewItems
+  //      skips them even though they haven't been rendered yet.
+  //   2. Items that arrive from itemHandler before the background loader has
+  //      started (feedsLoaded not yet true), which historyDayLoaded can't catch.
   useEffect(() => {
-    if (!groups || newKeys.length === 0) return
+    if (!group) return
+
+    const latestItems = getGroupItems(group, feedsRef.current, Date.now(), 50)
+    const unrendered = latestItems.filter(
+      item => !itemsRef.current.keys.includes(item.key),
+    )
+    if (unrendered.length === 0) return
+
+    renderItems(unrendered)
+    needsMoreItemsRef.current = false
+    setLoading(false)
+    setMessage("")
+    const oldestInBatch = unrendered[unrendered.length - 1].timestamp
+    if (oldestInBatch < oldestTimestampRef.current) {
+      oldestTimestampRef.current = oldestInBatch
+    }
+    setTimeout(() => {
+      if (isMountedRef.current) setupLoadMoreObserver()
+    }, 100)
+  }, [feeds, group, renderItems, setupLoadMoreObserver, setMessage])
+
+  // Watch for new items passed from parent (Display component)
+  useEffect(() => {
+    if (!group || !newItems || newItems.length === 0) return
 
     if (!watchEnd.current) {
       watchEnd.current = new IntersectionObserver(e => {
-        if (e[0].isIntersecting) setTimeout(() => setNewFrom(0), 5000)
+        if (e[0].isIntersecting) {
+          const timeoutId = setTimeout(() => {
+            if (isMountedRef.current) {
+              setNewFrom(0)
+            }
+          }, 5000)
+          return () => clearTimeout(timeoutId)
+        }
       })
     }
 
-    ;(async () => {
-      const groupStats = new Map()
-      groups.all.forEach(g =>
-        groupStats.set(g.key, {
-          count: !group || g.key !== group.key ? g.count : 0,
-          latest: 0,
-          text: "",
-          author: "",
-          timestamp: 0,
-        }),
-      )
-      let earliest = 0
-      let latest = 0
-      for (let i = 0; i < newKeys.length; i++) {
-        const key = newKeys[i]
-        if (!key) continue
+    let earliest = 0
+    let latest = 0
+    const itemsToRender = []
 
-        const {url, day} = itemFeeds.get(key)
-        if (!url || !day) continue
+    // Render items that arrived after this group was selected and not already rendered
+    for (const newItem of newItems.slice(newItemsBaseRef.current)) {
+      if (!group.feeds || !group.feeds.includes(newItem.feedUrl)) continue
+      if (items.keys.includes(newItem.key)) continue
 
-        const feed = feeds.get(url)
-        if (!feed || !feed.items || !feed.items[day]) continue
+      itemsToRender.push(newItem)
 
-        const item = feed.items[day][key]
-        if (!item) continue
+      if (newItem.key < earliest || earliest === 0) earliest = newItem.key
+      if (newItem.key > latest || latest === 0) latest = newItem.key
+    }
 
-        groups.all.forEach(g => {
-          if (!g.feeds.includes(item.url)) return
+    // Batch render all new items at once
+    if (itemsToRender.length > 0) {
+      renderItems(itemsToRender)
+    }
 
-          let stats = groupStats.get(g.key)
-          if (item.timestamp > stats.latest) {
-            stats.latest = item.timestamp
-            stats.author = item.author
-            stats.timestamp = item.timestamp
-            const tag = /(<([^>]+)>)/g
-            const text = item.title
-              ? item.title.replace(tag, "")
-              : item.content.replace(tag, "")
-            stats.text = text.length > 200 ? text.substring(0, 200) : text
-          }
-          if (!group || g.key !== group.key) stats.count++
-          groupStats.set(g.key, stats)
-        })
-        if (!group || !group.feeds.includes(item.url)) continue
-
-        updateItem({
-          key,
-          title: item.title,
-          content: item.content,
-          author: item.author,
-          category: item.category ? Object.keys(item.category) : null,
-          enclosure: mapEnclosure(item.enclosure),
-          permalink: item.permalink,
-          guid: item.guid,
-          timestamp: item.timestamp,
-          feedUrl: feed.url,
-          feedTitle: feed.title ? feed.title : "",
-          feedImage: feed.image ? feed.image : "",
-          url: item.url,
-        })
-        if (key < earliest || earliest === 0) earliest = key
-        if (key > latest || latest === 0) latest = key
+    // Update observer if we have new items
+    if (latest !== 0) {
+      if (earliest !== 0 && newFrom === 0) {
+        setNewFrom(earliest)
       }
 
-      setTimeout(() => {
-        if (earliest !== 0 && newFrom === 0) {
-          // If there is no current newFrom marker then mark as new from
-          // earliest, the marker will be removed when scrolled to the end.
-          setNewFrom(earliest)
-        }
-        if (latest !== 0) {
-          // Stop watching the current last key.
+      // Short delay to allow React to render new items and populate itemRefs
+      // before setting up the intersection observer.
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
           const currentTarget = itemRefs.current.get(lastKey.current)
-          if (currentTarget) watchEnd.current.unobserve(currentTarget)
+          if (currentTarget && watchEnd.current) {
+            watchEnd.current.unobserve(currentTarget)
+          }
           lastKey.current = latest
           const newTarget = itemRefs.current.get(latest)
-          if (newTarget) watchEnd.current.observe(newTarget)
+          if (newTarget && watchEnd.current) {
+            watchEnd.current.observe(newTarget)
+          }
         }
-        setGroupStats(groupStats)
-      }, 5000)
-    })()
-  }, [
-    group,
-    groups,
-    newKeys,
-    itemFeeds,
-    setGroupStats,
-    newFrom,
-    feeds,
-    mapEnclosure,
-  ])
+      }, 200)
+
+      return () => clearTimeout(timeoutId)
+    }
+  }, [group, items.keys, renderItems, newFrom, newItems])
 
   return (
     <Container maxWidth="md">
-      <Grid container ref={itemListRef}>
+      {loading && (
+        <Box sx={{display: "flex", justifyContent: "center", p: 4}}>
+          <CircularProgress />
+        </Box>
+      )}
+      <Grid container>
         {group &&
           items &&
           items.all.map(i => (

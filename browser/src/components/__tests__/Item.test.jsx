@@ -1,206 +1,340 @@
-import React from "react"
-import {describe, it, expect, beforeEach, vi} from "vitest"
-import {render, screen} from "@testing-library/react"
+import {describe, it, expect, beforeEach, afterEach, vi} from "vitest"
+import {render, screen, fireEvent} from "@testing-library/react"
 import Item from "../Item"
-import {createMockItem} from "./ItemList.test.jsx"
 
 describe("Item Component", () => {
-  const mockItemRefs = {current: new Map()}
-
-  const defaultProps = {
-    item: createMockItem(),
-    itemRefs: mockItemRefs,
-    newFrom: 0,
-  }
+  let mockItemRefs
 
   beforeEach(() => {
+    mockItemRefs = {current: new Map()}
     vi.clearAllMocks()
-    mockItemRefs.current.clear()
+  })
+
+  afterEach(async () => {
+    vi.clearAllMocks()
+    // Allow pending timers to complete before cleanup
+    await new Promise(resolve => setTimeout(resolve, 100))
   })
 
   it("should render without crashing", () => {
-    const {container} = render(<Item {...defaultProps} />)
-    expect(container).toBeTruthy()
-  })
-
-  it("should display the item title", () => {
-    const item = createMockItem({
-      title: "Test Article Title",
-    })
-    const props = {
-      ...defaultProps,
-      item,
-    }
-    render(<Item {...props} />)
-    expect(screen.getByText("Test Article Title")).toBeInTheDocument()
-  })
-
-  it("should display feed title when no author", () => {
-    const item = createMockItem({
-      author: null,
-      feedTitle: "My Test Feed",
-    })
-    const props = {
-      ...defaultProps,
-      item,
-    }
-    render(<Item {...props} />)
-    expect(screen.getByText("My Test Feed")).toBeInTheDocument()
-  })
-
-  it("should display author if available", () => {
-    const item = createMockItem({
-      author: "Jane Smith",
-    })
-    const props = {
-      ...defaultProps,
-      item,
-    }
-    render(<Item {...props} />)
-    expect(screen.getByText("Jane Smith")).toBeInTheDocument()
-  })
-
-  it("should display the item content", () => {
-    const item = createMockItem({
-      content: "This is the article content that should be displayed.",
-    })
-    const props = {
-      ...defaultProps,
-      item,
-    }
-    render(<Item {...props} />)
-    expect(
-      screen.getByText("This is the article content that should be displayed."),
-    ).toBeInTheDocument()
-  })
-
-  it("should handle item without author", () => {
-    const item = createMockItem({
-      author: null,
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
       feedTitle: "Test Feed",
-    })
-    const props = {
-      ...defaultProps,
-      item,
+      feedImage: "",
+      url: "https://example.com/article",
     }
-    render(<Item {...props} />)
-    // Should display feed title when author is missing
-    expect(screen.getByText("Test Feed")).toBeInTheDocument()
-  })
 
-  it("should handle item without content", () => {
-    const item = createMockItem({
-      content: null,
-    })
-    const props = {
-      ...defaultProps,
-      item,
-    }
-    const {container} = render(<Item {...props} />)
+    const {container} = render(
+      <Item item={item} itemRefs={mockItemRefs} newFrom={0} />,
+    )
+
     expect(container).toBeTruthy()
   })
 
-  it("should display timestamp as a link", () => {
-    const item = createMockItem({
-      permalink: "https://example.com/article-123",
-      url: "https://example.com",
-    })
-    const props = {
-      ...defaultProps,
-      item,
+  it("should render Grid item", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      url: "https://example.com/article",
     }
-    render(<Item {...props} />)
-    const link = screen.getByRole("link")
-    expect(link).toHaveAttribute("href", "https://example.com/article-123")
+
+    const {container} = render(
+      <Item item={item} itemRefs={mockItemRefs} newFrom={0} />,
+    )
+
+    expect(container.querySelector(".MuiGrid-item")).toBeTruthy()
   })
 
-  describe("Interaction Tests", () => {
-    it("should be able to click the timestamp link", () => {
-      const item = createMockItem({
-        permalink: "https://example.com/article-123",
-        url: "https://example.com",
-      })
-      const props = {
-        ...defaultProps,
-        item,
-      }
-      render(<Item {...props} />)
-      const link = screen.getByRole("link")
+  it("should render item title", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article Title",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      url: "https://example.com/article",
+    }
 
-      expect(link).toHaveAttribute("href", "https://example.com/article-123")
-      expect(link).toHaveAttribute("target", "_blank")
-    })
+    render(<Item item={item} itemRefs={mockItemRefs} newFrom={0} />)
 
-    it("should expand long content with show more button", () => {
-      const longContent = "Lorem ipsum dolor sit amet. ".repeat(50) // Very long content
-      const item = createMockItem({
-        content: longContent,
-      })
-      const props = {
-        ...defaultProps,
-        item,
-      }
-      render(<Item {...props} />)
+    expect(screen.getByText(/Test Article Title/)).toBeTruthy()
+  })
 
-      // When content is longer than 1200 chars, should show "show more" button
-      const showMoreButton = screen.queryByText(/show more/i)
-      if (showMoreButton) {
-        expect(showMoreButton).toBeInTheDocument()
-      }
-    })
+  it("should render item author", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "John Doe",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      url: "https://example.com/article",
+    }
 
-    it("should handle content without HTML tags", () => {
-      const item = createMockItem({
-        content: "Simple plain text content",
-      })
-      const props = {
-        ...defaultProps,
-        item,
-      }
-      render(<Item {...props} />)
-      expect(screen.getByText("Simple plain text content")).toBeInTheDocument()
-    })
+    render(<Item item={item} itemRefs={mockItemRefs} newFrom={0} />)
 
-    it("should handle content with HTML tags", () => {
-      const item = createMockItem({
-        content: "<p>Content with <strong>HTML</strong> tags</p>",
-      })
-      const props = {
-        ...defaultProps,
-        item,
-      }
-      render(<Item {...props} />)
-      // Should parse and display HTML content
-      const container = screen.getByText(/Content with/)
-      expect(container).toBeInTheDocument()
-    })
+    expect(screen.getByText("John Doe")).toBeTruthy()
+  })
 
-    it("should display author in header", () => {
-      const item = createMockItem({
-        author: "John Smith",
-      })
-      const props = {
-        ...defaultProps,
-        item,
-      }
-      render(<Item {...props} />)
-      expect(screen.getByText("John Smith")).toBeInTheDocument()
-    })
+  it("should render feed title when author is not provided", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: null,
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "My Feed",
+      feedImage: "",
+      url: "https://example.com/article",
+    }
 
-    it("should render item ref for IntersectionObserver", () => {
-      const itemRefs = {current: new Map()}
-      const item = createMockItem({
-        key: 12345,
-      })
-      const props = {
-        ...defaultProps,
-        item,
-        itemRefs,
-      }
-      render(<Item {...props} />)
+    render(<Item item={item} itemRefs={mockItemRefs} newFrom={0} />)
 
-      // The Grid item should be added to refs after render
-      expect(itemRefs.current).toBeTruthy()
-    })
+    expect(screen.getByText("My Feed")).toBeTruthy()
+  })
+
+  it("should render item content", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "<p>Test content here</p>",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      url: "https://example.com/article",
+    }
+
+    render(<Item item={item} itemRefs={mockItemRefs} newFrom={0} />)
+
+    expect(screen.getByText(/Test content here/)).toBeTruthy()
+  })
+
+  it("should show 'show more' link for long content", () => {
+    const longContent = "<p>" + "x".repeat(1300) + "</p>"
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: longContent,
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      url: "https://example.com/article",
+    }
+
+    render(<Item item={item} itemRefs={mockItemRefs} newFrom={0} />)
+
+    expect(screen.getByText("show more")).toBeTruthy()
+  })
+
+  it("should toggle show more/less", () => {
+    const longContent = "<p>" + "x".repeat(1300) + "</p>"
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: longContent,
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      url: "https://example.com/article",
+    }
+
+    render(<Item item={item} itemRefs={mockItemRefs} newFrom={0} />)
+
+    const showMoreLink = screen.getByText("show more")
+    fireEvent.click(showMoreLink)
+
+    expect(screen.getByText("show less")).toBeTruthy()
+  })
+
+  it("should render short content without show more link", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "<p>Short content</p>",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      url: "https://example.com/article",
+    }
+
+    render(<Item item={item} itemRefs={mockItemRefs} newFrom={0} />)
+
+    expect(screen.queryByText("show more")).not.toBeInTheDocument()
+  })
+
+  it("should render feed image avatar when available", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "https://example.com/image.jpg",
+      url: "https://example.com/article",
+    }
+
+    const {container} = render(
+      <Item item={item} itemRefs={mockItemRefs} newFrom={0} />,
+    )
+
+    const avatar = container.querySelector(".MuiAvatar-img")
+    expect(avatar).toBeTruthy()
+  })
+
+  it("should render permalink link", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      permalink: "https://example.com/article-1",
+      url: "https://example.com/article",
+    }
+
+    render(<Item item={item} itemRefs={mockItemRefs} newFrom={0} />)
+
+    const link = screen.getByRole("link")
+    expect(link.href).toContain("https://example.com/article-1")
+  })
+
+  it("should render divider for new items", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      url: "https://example.com/article",
+    }
+
+    const {container} = render(
+      <Item item={item} itemRefs={mockItemRefs} newFrom="item-1" />,
+    )
+
+    expect(container.querySelector(".MuiDivider-root")).toBeTruthy()
+  })
+
+  it("should add item ref on mount", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      url: "https://example.com/article",
+    }
+
+    render(<Item item={item} itemRefs={mockItemRefs} newFrom={0} />)
+
+    expect(mockItemRefs.current.has("item-1")).toBeTruthy()
+  })
+
+  it("should render enclosure images", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      enclosure: {
+        photo: [{link: "https://example.com/photo.jpg", alt: "Photo"}],
+      },
+      url: "https://example.com/article",
+    }
+
+    const {container} = render(
+      <Item item={item} itemRefs={mockItemRefs} newFrom={0} />,
+    )
+
+    const img = container.querySelector("img")
+    expect(img).toBeTruthy()
+  })
+
+  it("should render enclosure audio", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      enclosure: {
+        audio: ["https://example.com/audio.mp3"],
+      },
+      url: "https://example.com/article",
+    }
+
+    const {container} = render(
+      <Item item={item} itemRefs={mockItemRefs} newFrom={0} />,
+    )
+
+    const audio = container.querySelector("audio")
+    expect(audio).toBeTruthy()
+  })
+
+  it("should render enclosure video", () => {
+    const item = {
+      key: "item-1",
+      title: "Test Article",
+      content: "Test content",
+      author: "Test Author",
+      timestamp: Date.now(),
+      feedUrl: "https://example.com/feed",
+      feedTitle: "Test Feed",
+      feedImage: "",
+      enclosure: {
+        video: ["https://example.com/video.mp4"],
+      },
+      url: "https://example.com/article",
+    }
+
+    const {container} = render(
+      <Item item={item} itemRefs={mockItemRefs} newFrom={0} />,
+    )
+
+    const video = container.querySelector("video")
+    expect(video).toBeTruthy()
   })
 })

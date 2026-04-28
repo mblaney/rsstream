@@ -8,7 +8,7 @@ import {fileURLToPath} from "url"
 import fs from "fs/promises"
 import Holster from "@mblaney/holster/src/holster.js"
 
-const holster = Holster({secure: true, memoryLimit: 1536})
+const holster = Holster({secure: true, memoryLimit: 1536, port: 8765})
 const user = holster.user()
 const username = process.env.HOLSTER_USER_NAME ?? "host"
 const password = process.env.HOLSTER_USER_PASSWORD ?? "password"
@@ -813,19 +813,56 @@ app.post("/add-feed", async (req, res) => {
     return
   }
 
+  if (req.body.fake) {
+    const data = {
+      title: url,
+      description: "",
+      html_url: url,
+      language: "",
+      image: "",
+      subscriber_count: 1,
+    }
+    user.get("feeds").next(url).put(data, err => {
+      if (err) {
+        console.log(err)
+        res.status(500).send("Error saving feed")
+        return
+      }
+
+      user.get("accounts").next(code).put({subscribed: account.subscribed + 1}, err => {
+        if (err) {
+          console.log(err)
+          res.status(500).send("Error adding to account subscribed")
+          return
+        }
+
+        res.send({add: {url, title: url}})
+      })
+    })
+    return
+  }
+
   if (!addFeedUrl || !addFeedID || !addFeedApiKey) {
     res.status(500).send({error: "Could not add feed, env not set"})
     return
   }
 
   try {
-    const add = await fetch(addFeedUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: `id=${addFeedID}&key=${addFeedApiKey}&action=add-feed&xmlUrl=${encodeURIComponent(url)}`,
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    let add
+    try {
+      add = await fetch(addFeedUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: `id=${addFeedID}&key=${addFeedApiKey}&action=add-feed&xmlUrl=${encodeURIComponent(url)}`,
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
     if (!add.ok) {
       console.log("Error from", addFeedUrl, url, add.statusText)
       res.status(500).send({error: "Error adding feed"})

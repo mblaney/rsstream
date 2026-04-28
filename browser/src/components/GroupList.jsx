@@ -1,29 +1,36 @@
 import {useEffect, useState} from "react"
 import parse from "html-react-parser"
+import Box from "@mui/material/Box"
+import CircularProgress from "@mui/material/CircularProgress"
 import Container from "@mui/material/Container"
 import Grid from "@mui/material/Grid"
 import List from "@mui/material/List"
 import Typography from "@mui/material/Typography"
 import Group from "./Group"
 
-const GroupList = ({groups, setGroup}) => {
+const GroupList = ({groups, groupsLoaded, setGroup}) => {
   const [message, setMessage] = useState("")
 
-  useEffect(() => {
-    if (groups && groups.all.filter(g => g.feeds.length !== 0) !== 0) {
-      setMessage("")
-    }
+  const hasGroups =
+    groups &&
+    groups.all.filter(g => g.feeds && g.feeds.length !== 0).length !== 0
 
-    const timeout = setTimeout(() => {
-      if (groups && groups.all.filter(g => g.feeds.length !== 0).length === 0) {
+  useEffect(() => {
+    if (hasGroups) {
+      setMessage("")
+      return
+    }
+    if (!groupsLoaded) return
+    const id = setTimeout(
+      () =>
         setMessage(
           "Welcome to your group list page! Select <b>Add group</b>" +
             " from the account menu to create your first group.",
-        )
-      }
-    }, 2000)
-    return () => clearTimeout(timeout)
-  }, [groups])
+        ),
+      500,
+    )
+    return () => clearTimeout(id)
+  }, [groupsLoaded, hasGroups])
 
   return (
     <Container maxWidth="md">
@@ -33,12 +40,18 @@ const GroupList = ({groups, setGroup}) => {
             {groups &&
               groups.all.map(
                 group =>
+                  group.feeds &&
                   group.feeds.length !== 0 && (
-                    <Group group={group} setGroup={setGroup} />
+                    <Group key={group.key} group={group} setGroup={setGroup} />
                   ),
               )}
           </List>
-          <Typography>{message && parse(message)}</Typography>
+          {!groupsLoaded && (
+            <Box sx={{display: "flex", justifyContent: "center", p: 2}}>
+              <CircularProgress />
+            </Box>
+          )}
+          {message && <Typography align="center">{parse(message)}</Typography>}
         </Grid>
       </Grid>
     </Container>

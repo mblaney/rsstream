@@ -5,13 +5,14 @@ body {
   font-family: Roboto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
 }
 
 html,
 body,
 #root {
   height: 100vh;
+  overscroll-behavior-y: none;
 }
 
 img {
@@ -23,10 +24,6 @@ img {
 p {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-a {
-  color: #757575;
 }
 
 code {

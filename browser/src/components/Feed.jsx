@@ -116,7 +116,6 @@ const Feed = ({
 
   return (
     <ListItem
-      key={feed.key}
       disablePadding
       alignItems="flex-start"
       secondaryAction={showDelete(feed)}

@@ -20,7 +20,7 @@ your Holster data via the API:
 
 ```
 const {default: Holster} = await import("@mblaney/holster/src/holster.js")
-const holster = Holster()
+const holster = Holster({port: 8765})
 const user = holster.user()
 user.create("host", "password", console.log)
 

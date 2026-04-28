@@ -1,9 +1,12 @@
 import {useRef, useState} from "react"
+import Box from "@mui/material/Box"
 import Button from "@mui/material/Button"
 import Card from "@mui/material/Card"
 import CardContent from "@mui/material/CardContent"
+import Checkbox from "@mui/material/Checkbox"
 import Container from "@mui/material/Container"
 import FormControl from "@mui/material/FormControl"
+import FormControlLabel from "@mui/material/FormControlLabel"
 import Grid from "@mui/material/Grid"
 import IconButton from "@mui/material/IconButton"
 import InputAdornment from "@mui/material/InputAdornment"
@@ -19,20 +22,27 @@ const Login = ({user, host, mode, setMode}) => {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [stayLoggedIn, setStayLoggedIn] = useState(false)
   const [message, setMessage] = useState(user.is ? "Already logged in" : "")
   const [disabledButton, setDisabledButton] = useState(user.is)
   const found = useRef(false)
 
   const checkAccount = async () => {
+    if (!user.is) return
+
+    setMessage("Credentials verified, looking up account...")
     const code = await new Promise(res => {
-      user.get([host, "map"]).next("account:" + user.is.pub, res, {wait: 2000})
+      user.get([host, "map"]).next("account:" + user.is.pub, res)
     })
     if (!code) return
 
+    setMessage("Account found, verifying details...")
     const account = await new Promise(res => {
-      user.get([host, "accounts"]).next(code, res, {wait: 2000})
+      user.get([host, "accounts"]).next(code, res)
     })
-    if (!account || account.pub !== user.is.pub) {
+    if (!account) return
+
+    if (account.pub !== user.is.pub) {
       // Previous account can be returned if user remembers their old password.
       return "Wrong username or password"
     }
@@ -51,13 +61,17 @@ const Login = ({user, host, mode, setMode}) => {
     }
 
     setDisabledButton(true)
-    setMessage("Checking account...")
+    setMessage("Verifying credentials...")
     user.auth(u, password, async err => {
       if (!err) {
         // auth is ok so look up account details in host data.
         err = await checkAccount()
         if (found.current) {
-          user.store(false)
+          user.store(stayLoggedIn)
+          if (stayLoggedIn) {
+            localStorage.setItem("code", sessionStorage.getItem("code"))
+            localStorage.setItem("name", sessionStorage.getItem("name"))
+          }
           window.location = "/"
           return
         }
@@ -83,9 +97,11 @@ const Login = ({user, host, mode, setMode}) => {
             setMessage("Wrong username or password")
             return
           }
+          setMessage(`Trying username variant ${match[1]}.${increment}...`)
           login(`${match[1]}.${increment}`)
           return
         }
+        setMessage(`Trying username variant ${u}.1...`)
         login(`${u}.1`)
         return
       }
@@ -112,6 +128,7 @@ const Login = ({user, host, mode, setMode}) => {
                   margin="normal"
                   value={username}
                   onChange={event => setUsername(event.target.value)}
+                  InputLabelProps={{shrink: true}}
                 />
                 <FormControl
                   variant="outlined"
@@ -138,19 +155,30 @@ const Login = ({user, host, mode, setMode}) => {
                     label="Password"
                   />
                 </FormControl>
-                <Button
-                  sx={{mt: 1}}
-                  variant="contained"
-                  disabled={disabledButton}
-                  onClick={() => login(username)}
-                >
-                  Submit
-                </Button>
-                {message && (
-                  <Typography sx={{m: 1}} variant="string">
-                    {message}
-                  </Typography>
-                )}
+                <Box sx={{display: "flex", alignItems: "center", mt: 1}}>
+                  {!user.is && !message && (
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={stayLoggedIn}
+                          onChange={e => setStayLoggedIn(e.target.checked)}
+                        />
+                      }
+                      label="Stay logged in"
+                    />
+                  )}
+                  {message && (
+                    <Typography variant="body2">{message}</Typography>
+                  )}
+                  <Button
+                    sx={{ml: "auto"}}
+                    variant="contained"
+                    disabled={disabledButton}
+                    onClick={() => login(username)}
+                  >
+                    Submit
+                  </Button>
+                </Box>
               </CardContent>
             </Card>
           </Grid>

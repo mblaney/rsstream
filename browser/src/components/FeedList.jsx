@@ -8,107 +8,49 @@ import List from "@mui/material/List"
 import TextField from "@mui/material/TextField"
 import Typography from "@mui/material/Typography"
 import {init, reducer} from "../utils/reducer.js"
-import {
-  nytFavicon,
-  bbcFavicon,
-  tcFavicon,
-  wiredFavicon,
-  espnFavicon,
-  cbsFavicon,
-} from "../images/favicons.js"
+import {defaultFeeds, defaultGroups} from "../utils/defaultFeeds.js"
 import Feed from "./Feed"
 
 // TODO: Display a filtered list using the search bar.
-const FeedList = ({user, code, groups, showGroupList}) => {
+const FeedList = ({user, code, groups, showGroupList, appFeeds}) => {
   const [groupName, setGroupName] = useState("")
   const [selected, setSelected] = useState([])
   const [message, setMessage] = useState("")
   const [disabledButton, setDisabledButton] = useState(false)
   const [hideDefaultFeeds, setHideDefaultFeeds] = useState(false)
-  const [delay, setDelay] = useState(true)
   const [feeds, updateFeed] = useReducer(reducer(), init)
-  const defaultGroups = ["News", "Tech", "Sport"]
 
   useEffect(() => {
-    updateFeed({
-      key: "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
-      title: "NYT > Top Stories",
-      html_url: "https://www.nytimes.com",
-      language: "en-us",
-      image: nytFavicon,
-      defaultGroup: "News",
-    })
-    updateFeed({
-      key: "https://feeds.bbci.co.uk/news/world/rss.xml",
-      title: "BBC News",
-      html_url: "https://www.bbc.co.uk/news/world",
-      language: "en-gb",
-      image: bbcFavicon,
-      defaultGroup: "News",
-    })
-    updateFeed({
-      key: "https://techcrunch.com/feed",
-      title: "TechCrunch",
-      html_url: "https://techcrunch.com",
-      language: "en-US",
-      image: tcFavicon,
-      defaultGroup: "Tech",
-    })
-    updateFeed({
-      key: "https://www.wired.com/feed",
-      title: "Wired",
-      html_url: "https://www.wired.com",
-      language: "en-US",
-      image: wiredFavicon,
-      defaultGroup: "Tech",
-    })
-    updateFeed({
-      key: "https://www.espn.com/espn/rss/news",
-      title: "www.espn.com - TOP",
-      html_url: "https://www.espn.com",
-      language: "en",
-      image: espnFavicon,
-      defaultGroup: "Sport",
-    })
-    updateFeed({
-      key: "https://www.cbssports.com/rss/headlines",
-      title: "CBSSports.com Headlines",
-      html_url: "https://www.cbssports.com",
-      language: "en-us",
-      image: cbsFavicon,
-      defaultGroup: "Sport",
-    })
-    setTimeout(() => setDelay(false), 1000)
+    for (const feed of defaultFeeds) {
+      updateFeed(feed)
+    }
   }, [])
+
+  // Populate from already-loaded app feeds. App.jsx stores the full metadata
+  // (title, image, description, language, defaultGroup) so no separate Holster
+  // listener is needed here.
+  useEffect(() => {
+    for (const [url, feed] of Object.entries(appFeeds || {})) {
+      if (!feed || !feed.title) continue
+      updateFeed({
+        key: url,
+        title: feed.title,
+        image: feed.image || "",
+        description: feed.description || "",
+        html_url: feed.url || "",
+        language: feed.language || "",
+        defaultGroup: feed.defaultGroup || "",
+      })
+    }
+  }, [appFeeds])
 
   useEffect(() => {
     if (!user) return
 
-    const update = allFeeds => {
-      if (!allFeeds) return
-
-      for (const [url, feed] of Object.entries(allFeeds)) {
-        if (!url) return
-
-        updateFeed({
-          key: url,
-          title: feed ? feed.title : "",
-          description: feed ? feed.description : "",
-          html_url: feed ? feed.html_url : "",
-          language: feed ? feed.language : "",
-          image: feed ? feed.image : "",
-        })
-      }
-    }
-
     user
       .get("public")
       .next("settings")
-      .next("hideDefaultFeeds", hideDefaultFeeds => {
-        setHideDefaultFeeds(hideDefaultFeeds)
-
-        user.get("public").next("feeds").on(update, true)
-      })
+      .next("hideDefaultFeeds", val => setHideDefaultFeeds(val))
   }, [user])
 
   const dismissDefaults = () => {
@@ -244,6 +186,7 @@ const FeedList = ({user, code, groups, showGroupList}) => {
                   f.title &&
                   !f.defaultGroup && (
                     <Feed
+                      key={f.key}
                       user={user}
                       code={code}
                       groups={groups}
@@ -255,7 +198,7 @@ const FeedList = ({user, code, groups, showGroupList}) => {
               )}
           </List>
         </Grid>
-        {!hideDefaultFeeds && !delay && !allDefaultFeedsAdded() && (
+        {!hideDefaultFeeds && !allDefaultFeedsAdded() && (
           <Grid item xs={12}>
             <Typography>
               Looking for feeds? Click add feed in the menu, or try some of the
@@ -264,13 +207,12 @@ const FeedList = ({user, code, groups, showGroupList}) => {
           </Grid>
         )}
         {!hideDefaultFeeds &&
-          !delay &&
           defaultGroups.map(
             defaultGroup =>
               feeds &&
               feeds.all.filter(f => f.title && f.defaultGroup === defaultGroup)
                 .length > 0 && (
-                <Grid item xs={12}>
+                <Grid item xs={12} key={defaultGroup}>
                   <Typography variant="h6">{defaultGroup}</Typography>
                   <List>
                     {feeds &&
@@ -279,6 +221,7 @@ const FeedList = ({user, code, groups, showGroupList}) => {
                           f.title &&
                           f.defaultGroup === defaultGroup && (
                             <Feed
+                              key={f.key}
                               user={user}
                               code={code}
                               groups={groups}
@@ -292,7 +235,7 @@ const FeedList = ({user, code, groups, showGroupList}) => {
                 </Grid>
               ),
           )}
-        {!hideDefaultFeeds && !delay && !allDefaultFeedsAdded() && (
+        {!hideDefaultFeeds && !allDefaultFeedsAdded() && (
           <Grid item xs={12}>
             <Button sx={{mt: 1}} variant="contained" onClick={dismissDefaults}>
               Dismiss Defaults

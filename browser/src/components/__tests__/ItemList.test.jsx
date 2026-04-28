@@ -1,196 +1,591 @@
-import React from "react"
-import {describe, it, expect, beforeEach, vi} from "vitest"
-import {render, screen} from "@testing-library/react"
+import {describe, it, expect, beforeEach, afterEach, vi} from "vitest"
+import {render, act} from "@testing-library/react"
 import ItemList from "../ItemList"
 
-/**
- * Mock data factory functions for Vitest
- */
-const createMockItem = (overrides = {}) => ({
-  key: Date.now() + Math.random(),
-  title: "Sample Article Title",
-  content: "This is sample content for testing.",
-  author: "John Doe",
-  category: {Technology: true, News: true},
-  enclosure: null,
-  permalink: "https://example.com/article",
-  guid: "unique-guid-123",
-  timestamp: Date.now() - 3600000,
-  feedUrl: "https://example.com/feed",
-  feedTitle: "Example Feed",
-  feedImage: "https://example.com/favicon.ico",
-  url: "https://example.com",
-  ...overrides,
-})
-
-const createMockFeed = (url = "https://example.com/feed", overrides = {}) => {
-  const day = Math.floor(Date.now() / 86400000) * 86400000
-  return {
-    url: "https://example.com",
-    title: "Example Feed",
-    image: "https://example.com/favicon.ico",
-    items: {
-      [day]: {
-        1000: {
-          title: "First Article",
-          content: "Content 1",
-          author: "John Doe",
-          category: {Technology: true},
-          enclosure: null,
-          permalink: "https://example.com/article-1",
-          guid: "guid-1",
-          timestamp: day,
-          url: "https://example.com",
-        },
-        1001: {
-          title: "Second Article",
-          content: "Content 2",
-          author: "Jane Smith",
-          category: {News: true},
-          enclosure: null,
-          permalink: "https://example.com/article-2",
-          guid: "guid-2",
-          timestamp: day - 3600000,
-          url: "https://example.com",
-        },
-      },
-    },
-    ...overrides,
-  }
-}
-
-const createMockGroup = (overrides = {}) => ({
-  key: "Technology",
-  feeds: ["https://example.com/feed"],
-  count: 2,
-  latest: Date.now(),
-  text: "Sample text",
-  author: "John Doe",
-  timestamp: Date.now(),
-  ...overrides,
-})
-
 describe("ItemList Component", () => {
-  const day = Math.floor(Date.now() / 86400000) * 86400000
-
-  const defaultProps = {
-    group: createMockGroup(),
-    groups: {all: [createMockGroup()], keys: ["Technology"]},
-    setGroupStats: vi.fn(),
-    resetGroup: vi.fn(),
-    currentKeys: [1000, 1001],
-    newKeys: [],
-    itemFeeds: new Map([
-      [1000, {url: "https://example.com/feed", day}],
-      [1001, {url: "https://example.com/feed", day}],
-    ]),
-    loadMoreItems: vi.fn(),
-    feeds: new Map([["https://example.com/feed", createMockFeed()]]),
-    updateStart: false,
-    setUpdateStart: vi.fn(),
-  }
+  let mockFeeds
+  let mockSetMessage
+  let mockRequestMoreHistory
 
   beforeEach(() => {
+    mockFeeds = {}
+    mockSetMessage = vi.fn()
+    mockRequestMoreHistory = vi.fn()
     vi.clearAllMocks()
+    vi.clearAllTimers()
+  })
+
+  afterEach(async () => {
+    vi.clearAllMocks()
+    vi.clearAllTimers()
+    await new Promise(resolve => setTimeout(resolve, 100))
   })
 
   it("should render without crashing", () => {
-    const {container} = render(<ItemList {...defaultProps} />)
-    expect(container).toBeTruthy()
-  })
-
-  it("should handle empty item list", () => {
-    const props = {
-      ...defaultProps,
-      currentKeys: [],
-      itemFeeds: new Map(),
+    const group = {
+      key: "test-group",
+      feeds: [],
     }
-    const {container} = render(<ItemList {...props} />)
+
+    const {container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
     expect(container).toBeTruthy()
   })
 
-  it("should render with different feed data", () => {
-    const customFeed = createMockFeed("https://custom.com/feed", {
-      title: "Custom Feed",
-      url: "https://custom.com",
-    })
-    const props = {
-      ...defaultProps,
-      feeds: new Map([["https://custom.com/feed", customFeed]]),
-      itemFeeds: new Map([[1000, {url: "https://custom.com/feed", day}]]),
-      currentKeys: [1000],
+  it("should render Container component", () => {
+    const group = {
+      key: "test-group",
+      feeds: [],
     }
-    const {container} = render(<ItemList {...props} />)
+
+    const {container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container.querySelector(".MuiContainer-root")).toBeTruthy()
+  })
+
+  it("should render Grid container", () => {
+    const group = {
+      key: "test-group",
+      feeds: [],
+    }
+
+    const {container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container.querySelector(".MuiGrid-container")).toBeTruthy()
+  })
+
+  it("should handle null group", () => {
+    const {container} = render(
+      <ItemList
+        group={null}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
     expect(container).toBeTruthy()
   })
 
-  describe("Interaction Tests", () => {
-    it("should call loadMoreItems when scrolling near end", () => {
-      const loadMoreItems = vi.fn()
-      const props = {
-        ...defaultProps,
-        loadMoreItems,
-      }
-      render(<ItemList {...props} />)
+  it("should handle group with multiple feeds", () => {
+    const group = {
+      key: "test-group",
+      feeds: [
+        "https://feed1.com/rss",
+        "https://feed2.com/rss",
+        "https://feed3.com/rss",
+      ],
+    }
 
-      // Simulate scroll event that would trigger loadMoreItems
-      // This would be handled by IntersectionObserver in the component
-      expect(loadMoreItems).not.toHaveBeenCalled()
-      // The actual callback would be triggered by IntersectionObserver
-      // when the sentinel element comes into view
+    const {container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should handle empty newItems array", () => {
+    const group = {
+      key: "test-group",
+      feeds: ["https://example.com/feed"],
+    }
+
+    const {container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should handle newItems as null", () => {
+    const group = {
+      key: "test-group",
+      feeds: ["https://example.com/feed"],
+    }
+
+    const {container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={null}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should render with valid feed data", () => {
+    const dayKey = Date.UTC(
+      new Date().getUTCFullYear(),
+      new Date().getUTCMonth(),
+      new Date().getUTCDate(),
+    )
+
+    const group = {
+      key: "test-group",
+      feeds: ["https://example.com/feed"],
+    }
+
+    mockFeeds = {
+      "https://example.com/feed": {
+        url: "https://example.com/feed",
+        title: "Test Feed",
+        image: "",
+        items: {
+          [dayKey]: {
+            "item-1": {
+              title: "Test Article",
+              content: "Test content",
+              timestamp: Date.now(),
+              author: "Test Author",
+              url: "https://example.com/article",
+            },
+          },
+        },
+      },
+    }
+
+    const {container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should handle group prop updates", () => {
+    const group1 = {
+      key: "group-1",
+      feeds: [],
+    }
+
+    const group2 = {
+      key: "group-2",
+      feeds: [],
+    }
+
+    const {rerender, container} = render(
+      <ItemList
+        group={group1}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    rerender(
+      <ItemList
+        group={group2}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should handle feedsRef with empty feeds object", () => {
+    const group = {
+      key: "test-group",
+      feeds: ["https://example.com/feed"],
+    }
+
+    const {container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should maintain state across re-renders", () => {
+    const group = {
+      key: "test-group",
+      feeds: [],
+    }
+
+    const {rerender, container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    rerender(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should handle switching from group to null", () => {
+    const group = {
+      key: "test-group",
+      feeds: [],
+    }
+
+    const {rerender, container} = render(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    rerender(
+      <ItemList
+        group={null}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  it("should handle switching from null to group", () => {
+    const group = {
+      key: "test-group",
+      feeds: [],
+    }
+
+    const {rerender, container} = render(
+      <ItemList
+        group={null}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    rerender(
+      <ItemList
+        group={group}
+        feeds={mockFeeds}
+        newItems={[]}
+        setMessage={mockSetMessage}
+        requestMoreHistory={mockRequestMoreHistory}
+        historyDayLoaded={0}
+        maxHistoryReached={false}
+      />,
+    )
+
+    expect(container).toBeTruthy()
+  })
+
+  describe("history loading flow", () => {
+    const makeFeeds = (timestamp = Date.now() - 1000) => {
+      const dayKey = Date.UTC(
+        new Date().getUTCFullYear(),
+        new Date().getUTCMonth(),
+        new Date().getUTCDate(),
+      )
+      return {
+        "https://example.com/feed": {
+          url: "https://example.com/feed",
+          title: "Test Feed",
+          image: "",
+          items: {
+            [dayKey]: {
+              "item-1": {
+                title: "Test Article",
+                content: "Test content",
+                timestamp,
+                author: "Test Author",
+                url: "https://example.com/article",
+              },
+            },
+          },
+        },
+      }
+    }
+
+    const group = {key: "test-group", feeds: ["https://example.com/feed"]}
+
+    it("should call requestMoreHistory when scrollback observer fires", async () => {
+      vi.useFakeTimers()
+      mockFeeds = makeFeeds()
+
+      render(
+        <ItemList
+          group={group}
+          feeds={mockFeeds}
+          newItems={[]}
+          setMessage={mockSetMessage}
+          requestMoreHistory={mockRequestMoreHistory}
+          historyDayLoaded={0}
+          maxHistoryReached={false}
+        />,
+      )
+
+      // Advance past the 100ms timeout that sets up the observer after initial render
+      await act(async () => {
+        vi.advanceTimersByTime(200)
+      })
+
+      expect(mockRequestMoreHistory).toHaveBeenCalled()
+      vi.useRealTimers()
     })
 
-    it("should call setGroupStats with correct data", () => {
-      const setGroupStats = vi.fn()
-      const props = {
-        ...defaultProps,
-        setGroupStats,
-      }
-      render(<ItemList {...props} />)
+    it("should cascade requestMoreHistory when a loaded day has no items for the group", async () => {
+      vi.useFakeTimers()
+      mockFeeds = makeFeeds()
 
-      // setGroupStats should be called during component lifecycle
-      // to update group statistics based on items
-      expect(setGroupStats).not.toHaveBeenCalled() // May not be called without user interaction
+      const {rerender} = render(
+        <ItemList
+          group={group}
+          feeds={mockFeeds}
+          newItems={[]}
+          setMessage={mockSetMessage}
+          requestMoreHistory={mockRequestMoreHistory}
+          historyDayLoaded={0}
+          maxHistoryReached={false}
+        />,
+      )
+
+      // Observer fires — requestMoreHistory called once, needsMoreItems set
+      await act(async () => {
+        vi.advanceTimersByTime(200)
+      })
+
+      const callsAfterObserver = mockRequestMoreHistory.mock.calls.length
+      expect(callsAfterObserver).toBeGreaterThan(0)
+
+      // Simulate a day finishing with no new items in feeds for this group
+      await act(async () => {
+        rerender(
+          <ItemList
+            group={group}
+            feeds={mockFeeds}
+            newItems={[]}
+            setMessage={mockSetMessage}
+            requestMoreHistory={mockRequestMoreHistory}
+            historyDayLoaded={1}
+            maxHistoryReached={false}
+          />,
+        )
+      })
+
+      expect(mockRequestMoreHistory.mock.calls.length).toBeGreaterThan(
+        callsAfterObserver,
+      )
+      vi.useRealTimers()
     })
 
-    it("should handle resetGroup callback", () => {
-      const resetGroup = vi.fn()
-      const props = {
-        ...defaultProps,
-        resetGroup,
+    // Display sets feedsRef.current = feeds synchronously in its render body so
+    // that by the time any child effect runs, the ref already contains the new
+    // day's items. ItemList mirrors this pattern internally. This test asserts
+    // the expected outcome: historyDayLoaded fires with current feeds, items are
+    // found, and the cascade stops without requesting more history.
+    it("should stop cascade when feeds is current at the time historyDayLoaded fires", async () => {
+      vi.useFakeTimers()
+      mockFeeds = makeFeeds()
+
+      const feedUrl = "https://example.com/feed"
+      const yesterday = Date.UTC(
+        new Date(Date.now() - 86400000).getUTCFullYear(),
+        new Date(Date.now() - 86400000).getUTCMonth(),
+        new Date(Date.now() - 86400000).getUTCDate(),
+      )
+      const feedsWithYesterday = {
+        [feedUrl]: {
+          ...mockFeeds[feedUrl],
+          items: {
+            ...mockFeeds[feedUrl].items,
+            [yesterday]: {
+              "item-yesterday": {
+                title: "Yesterday",
+                content: "Content",
+                timestamp: yesterday + 43200000,
+                author: "Author",
+                url: "https://example.com/yesterday",
+              },
+            },
+          },
+        },
       }
-      const {container} = render(<ItemList {...props} />)
-      expect(container).toBeTruthy()
+
+      const {rerender} = render(
+        <ItemList
+          group={group}
+          feeds={mockFeeds}
+          newItems={[]}
+          setMessage={mockSetMessage}
+          requestMoreHistory={mockRequestMoreHistory}
+          historyDayLoaded={0}
+          maxHistoryReached={false}
+        />,
+      )
+
+      await act(async () => {
+        vi.advanceTimersByTime(200)
+      })
+
+      const callsAfterObserver = mockRequestMoreHistory.mock.calls.length
+      expect(callsAfterObserver).toBeGreaterThan(0)
+
+      // Pass updated feeds and incremented historyDayLoaded together so that
+      // feedsRef.current is already current when the historyDayLoaded effect runs.
+      await act(async () => {
+        rerender(
+          <ItemList
+            group={group}
+            feeds={feedsWithYesterday}
+            newItems={[]}
+            setMessage={mockSetMessage}
+            requestMoreHistory={mockRequestMoreHistory}
+            historyDayLoaded={1}
+            maxHistoryReached={false}
+          />,
+        )
+      })
+
+      // Items found in yesterday's data: cascade stops, no further history request
+      expect(mockRequestMoreHistory.mock.calls.length).toBe(callsAfterObserver)
+      expect(mockSetMessage).not.toHaveBeenCalledWith(
+        "No more items available for this group.",
+      )
+      vi.useRealTimers()
     })
 
-    it("should update when currentKeys prop changes", () => {
-      const props = {
-        ...defaultProps,
-        currentKeys: [1000, 1001],
-      }
-      const {rerender} = render(<ItemList {...props} />)
+    it("should show no more items when maxHistoryReached and loaded day is empty", async () => {
+      vi.useFakeTimers()
+      mockFeeds = makeFeeds()
 
-      // Update with new keys
-      const newProps = {
-        ...props,
-        currentKeys: [1000, 1001, 2000],
-      }
-      rerender(<ItemList {...newProps} />)
+      const {rerender} = render(
+        <ItemList
+          group={group}
+          feeds={mockFeeds}
+          newItems={[]}
+          setMessage={mockSetMessage}
+          requestMoreHistory={mockRequestMoreHistory}
+          historyDayLoaded={0}
+          maxHistoryReached={false}
+        />,
+      )
 
-      // Component should handle the new keys
-      expect(newProps.currentKeys).toHaveLength(3)
-    })
+      // Observer fires — needsMoreItems set
+      await act(async () => {
+        vi.advanceTimersByTime(200)
+      })
 
-    it("should display new items divider when newKeys provided", () => {
-      const props = {
-        ...defaultProps,
-        newKeys: [1000],
-        newFrom: 1000,
-      }
-      const {container} = render(<ItemList {...props} />)
-      expect(container).toBeTruthy()
+      // History exhausted — day loads but still no older items for group
+      await act(async () => {
+        rerender(
+          <ItemList
+            group={group}
+            feeds={mockFeeds}
+            newItems={[]}
+            setMessage={mockSetMessage}
+            requestMoreHistory={mockRequestMoreHistory}
+            historyDayLoaded={1}
+            maxHistoryReached={true}
+          />,
+        )
+      })
+
+      expect(mockSetMessage).toHaveBeenCalledWith(
+        "No more items available for this group.",
+      )
+      vi.useRealTimers()
     })
   })
 })
-
-export {createMockItem, createMockFeed, createMockGroup}

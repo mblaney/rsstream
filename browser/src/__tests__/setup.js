@@ -1,16 +1,15 @@
 /**
- * Holster WebSocket Mock
- * Simulates the WebSocket transport layer for Holster authentication and data operations.
- * Intercepts messages from the Holster client and responds with properly formatted
- * wire protocol messages, including real cryptographic operations via SEA.
+ * Shared test utilities and helpers for all tests
+ * Includes Holster mock setup and test user creation
  */
 
 import {text} from "@mblaney/holster/src/utils.js"
 import SEA from "@mblaney/holster/src/sea.js"
+import Holster from "@mblaney/holster/src/holster.js"
 
 const testUsername = "testuser"
 const testPassword = "testpassword"
-let testPubKey = null // Will be set after key pair generation
+let testPubKey = null
 
 // Pre-generated SEA-encrypted test data and key pair
 let cachedTestAuthData = null
@@ -29,9 +28,8 @@ export async function initializeTestAuthData() {
 
   // Generate real EC keys using SEA.pair()
   testKeyPair = await SEA.pair()
-  testPubKey = testKeyPair.pub // Use the actual generated public key
+  testPubKey = testKeyPair.pub
 
-  // Only store private key components - public parts come from server response
   const privateKeys = {
     priv: testKeyPair.priv,
     epriv: testKeyPair.epriv,
@@ -47,7 +45,6 @@ export async function initializeTestAuthData() {
 
 /**
  * Server-side handler for Holster wire protocol messages
- * Processes GET/PUT requests and returns appropriate responses
  */
 function createServerHandler() {
   return {
@@ -60,7 +57,7 @@ function createServerHandler() {
         "@": messageId,
         put: {
           [soul]: {
-            [pubSoul]: {"#": pubSoul}, // Key is the soul reference with ~
+            [pubSoul]: {"#": pubSoul},
             _: {
               "#": soul,
               ">": {
@@ -126,12 +123,7 @@ function createServerHandler() {
 }
 
 /**
- * Main WebSocket mock factory
- * Creates a mock WebSocket that simulates Holster server behavior
- * Uses property-based event handlers (onmessage, onopen, etc.) as Holster does
- */
-/**
- * WebSocket constants matching the real WebSocket API
+ * WebSocket mock factory
  */
 createMockHolsterWebSocket.CONNECTING = 0
 createMockHolsterWebSocket.OPEN = 1
@@ -142,20 +134,16 @@ export function createMockHolsterWebSocket(url) {
   const handler = createServerHandler()
 
   const mockWs = {
-    // Event handler properties (assigned directly by Holster)
     onopen: null,
     onmessage: null,
     onclose: null,
     onerror: null,
-
-    // Standard WebSocket properties
-    readyState: 1, // OPEN
+    readyState: 1,
     url: url,
 
     send: data => {
       const message = JSON.parse(data)
 
-      // Process request and send response
       setTimeout(async () => {
         let response = null
 
@@ -163,32 +151,28 @@ export function createMockHolsterWebSocket(url) {
           const soul = message.get["#"]
 
           if (soul.startsWith("~@")) {
-            // Phase 1: Username lookup
             response = await handler.handleUsernameLookup(soul, message["#"])
           } else if (soul.startsWith("~") && !soul.startsWith("~@")) {
-            // Phase 2: User data request
             response = await handler.handleUserDataRequest(
               soul,
               message["#"],
               cachedTestAuthData,
             )
           } else {
-            // Unknown request
             response = handler.handleUnknownRequest(soul, message["#"])
           }
         } else if (message.put) {
-          // Handle PUT requests
           response = handler.handlePutRequest(message["#"])
         }
 
         if (response && mockWs.onmessage) {
           sendMessage(response)
         }
-      }, 10) // Small delay to simulate network
+      }, 10)
     },
 
     close: () => {
-      // Closes the WebSocket connection (required by WebSocket API)
+      // Closes the WebSocket connection
     },
   }
 
@@ -201,7 +185,6 @@ export function createMockHolsterWebSocket(url) {
     }
   }
 
-  // Simulate connection opening
   setTimeout(() => {
     if (mockWs.onopen) {
       mockWs.onopen(new Event("open"))
@@ -209,4 +192,53 @@ export function createMockHolsterWebSocket(url) {
   }, 10)
 
   return mockWs
+}
+
+// Queue to serialize createTestUser calls and prevent WebSocket race conditions
+let webSocketQueue = Promise.resolve()
+
+/**
+ * Create and authenticate a test Holster user
+ * @param {Object} options - Configuration options
+ * @param {number} options.waitTime - Wait timeout for wire.get operations in ms (default: 500)
+ * @returns {Promise<Object>} Authenticated user object
+ */
+export async function createTestUser(options = {}) {
+  const {waitTime = 500} = options
+
+  await initializeTestAuthData()
+
+  // Queue this user creation to prevent concurrent WebSocket conflicts
+  return (webSocketQueue = webSocketQueue.then(async () => {
+    const originalWebSocket = globalThis.WebSocket
+    globalThis.WebSocket = createMockHolsterWebSocket
+
+    try {
+      // Create Holster instance with short wait timeout for tests
+      const holster = Holster({wait: waitTime})
+      const user = holster.user()
+
+      await new Promise((resolve, reject) => {
+        user.auth(testUsername, testPassword, err => {
+          if (err) reject(err)
+          else resolve()
+        })
+
+        // Give it extra time to account for async operations
+        setTimeout(() => reject(new Error("Auth timeout")), waitTime + 500)
+      })
+
+      return user
+    } finally {
+      // Always restore original WebSocket after a delay to let pending operations complete
+      // This prevents "WebSocket is not defined" errors from Holster's wire protocol
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+      if (originalWebSocket) {
+        globalThis.WebSocket = originalWebSocket
+      } else {
+        delete globalThis.WebSocket
+      }
+    }
+  }))
 }

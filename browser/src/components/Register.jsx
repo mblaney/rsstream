@@ -116,6 +116,7 @@ const Register = ({user, mode, setMode}) => {
                   margin="normal"
                   value={username}
                   onChange={event => setUsername(event.target.value)}
+                  InputLabelProps={{shrink: true}}
                 />
                 <FormControl
                   variant="outlined"

@@ -10,6 +10,11 @@ import PersonIcon from "@mui/icons-material/Person"
 import {urlAvatar} from "../utils/avatar.js"
 import {formatDate} from "../utils/format.js"
 
+const contentSx = {
+  "& img, & video, & iframe": {maxWidth: "100%", height: "auto"},
+  "& pre": {overflowX: "auto"},
+}
+
 const Item = ({item, itemRefs, newFrom}) => {
   const [showMore, setShowMore] = useState(false)
   const stripped = item.content && item.content.replace(/(<([^>]+)>)/g, "")
@@ -48,7 +53,9 @@ const Item = ({item, itemRefs, newFrom}) => {
               textOverflow: "ellipsis",
             }}
           >
-            {item.author ? item.author : item.feedTitle}
+            {item.author
+              ? item.author.replace(/^https?:\/\//, "")
+              : item.feedTitle}
           </Typography>
           <Link
             href={item.permalink}
@@ -65,7 +72,7 @@ const Item = ({item, itemRefs, newFrom}) => {
           </Typography>
         )}
         {item.content && stripped.length > 1200 && showMore && (
-          <Typography component="div">
+          <Typography component="div" sx={contentSx}>
             {parse(item.content)}{" "}
             <Link
               component="button"
@@ -91,18 +98,25 @@ const Item = ({item, itemRefs, newFrom}) => {
           </Typography>
         )}
         {item.content && stripped.length <= 1200 && (
-          <Typography component="div">{parse(item.content)}</Typography>
+          <Typography component="div" sx={contentSx}>
+            {parse(item.content)}
+          </Typography>
         )}
         {item.enclosure &&
           item.enclosure.photo &&
           item.enclosure.photo.map(p => (
-            <img key={p.link} src={p.link} alt={p.alt} />
+            <img
+              key={p.link}
+              src={p.link}
+              alt={p.alt}
+              style={{maxWidth: "100%"}}
+            />
           ))}
         {item.enclosure &&
           item.enclosure.audio &&
           item.enclosure.audio.map(a =>
             a.startsWith("https") ? (
-              <audio key={a} controls src={a}></audio>
+              <audio key={a} controls src={a} style={{width: "100%"}}></audio>
             ) : (
               <Link href={a} target="_blank">
                 {a}
@@ -113,7 +127,12 @@ const Item = ({item, itemRefs, newFrom}) => {
           item.enclosure.video &&
           item.enclosure.video.map(v =>
             v.startsWith("https") ? (
-              <video key={v} controls src={v}></video>
+              <video
+                key={v}
+                controls
+                src={v}
+                style={{maxWidth: "100%"}}
+              ></video>
             ) : (
               <Link href={v} target="_blank">
                 {v}

@@ -8,19 +8,19 @@ import List from "@mui/material/List"
 import TextField from "@mui/material/TextField"
 import Typography from "@mui/material/Typography"
 import {init, reducer} from "../utils/reducer.js"
-import {
-  nytFavicon,
-  bbcFavicon,
-  tcFavicon,
-  wiredFavicon,
-  espnFavicon,
-  cbsFavicon,
-} from "../images/favicons.js"
+import {defaultFeeds} from "../utils/defaultFeeds.js"
 import Feed from "./Feed"
 
-const EditGroup = ({user, code, groups, currentGroup, showGroupList}) => {
+const EditGroup = ({
+  user,
+  code,
+  groups,
+  currentGroup,
+  showGroupList,
+  appFeeds,
+}) => {
   const [group, setGroup] = useState(() => {
-    groups.all.find(g => g.key === currentGroup)
+    return groups.all.find(g => g.key === currentGroup)
   })
   const [groupName, setGroupName] = useState(currentGroup)
   const [selected, setSelected] = useState([])
@@ -34,80 +34,29 @@ const EditGroup = ({user, code, groups, currentGroup, showGroupList}) => {
     setGroup(groups.all.find(g => g.key === currentGroup))
   }, [groups, currentGroup])
 
-  // This is copied from FeedList in case users have added default feeds to
-  // a group which also need to be displayed here.
   useEffect(() => {
-    updateFeed({
-      key: "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
-      title: "NYT > Top Stories",
-      html_url: "https://www.nytimes.com",
-      language: "en-us",
-      image: nytFavicon,
-      defaultGroup: "News",
-    })
-    updateFeed({
-      key: "https://feeds.bbci.co.uk/news/world/rss.xml",
-      title: "BBC News",
-      html_url: "https://www.bbc.co.uk/news/world",
-      language: "en-gb",
-      image: bbcFavicon,
-      defaultGroup: "News",
-    })
-    updateFeed({
-      key: "https://techcrunch.com/feed",
-      title: "TechCrunch",
-      html_url: "https://techcrunch.com",
-      language: "en-US",
-      image: tcFavicon,
-      defaultGroup: "Tech",
-    })
-    updateFeed({
-      key: "https://www.wired.com/feed",
-      title: "Wired",
-      html_url: "https://www.wired.com",
-      language: "en-US",
-      image: wiredFavicon,
-      defaultGroup: "Tech",
-    })
-    updateFeed({
-      key: "https://www.espn.com/espn/rss/news",
-      title: "www.espn.com - TOP",
-      html_url: "https://www.espn.com",
-      language: "en",
-      image: espnFavicon,
-      defaultGroup: "Sport",
-    })
-    updateFeed({
-      key: "https://www.cbssports.com/rss/headlines",
-      title: "CBSSports.com Headlines",
-      html_url: "https://www.cbssports.com",
-      language: "en-us",
-      image: cbsFavicon,
-      defaultGroup: "Sport",
-    })
+    for (const feed of defaultFeeds) {
+      updateFeed(feed)
+    }
   }, [])
 
+  // Populate from already-loaded app feeds. App.jsx stores the full metadata
+  // (title, image, description, language, defaultGroup) so no separate Holster
+  // listener is needed here.
   useEffect(() => {
-    if (!user) return
-
-    const update = allFeeds => {
-      if (!allFeeds) return
-
-      for (const [url, f] of Object.entries(allFeeds)) {
-        if (!url) continue
-
-        updateFeed({
-          key: url,
-          title: f ? f.title : "",
-          description: f ? f.description : "",
-          html_url: f ? f.html_url : "",
-          language: f ? f.language : "",
-          image: f ? f.image : "",
-        })
-      }
+    for (const [url, feed] of Object.entries(appFeeds || {})) {
+      if (!feed || !feed.title) continue
+      updateFeed({
+        key: url,
+        title: feed.title,
+        image: feed.image || "",
+        description: feed.description || "",
+        html_url: feed.url || "",
+        language: feed.language || "",
+        defaultGroup: feed.defaultGroup || "",
+      })
     }
-    user.get("public").next("feeds").on(update, true)
-  }, [user])
+  }, [appFeeds])
 
   const selectFeed = f => {
     if (selected.includes(f.key)) {
@@ -235,6 +184,7 @@ const EditGroup = ({user, code, groups, currentGroup, showGroupList}) => {
                   f.title &&
                   group.feeds.includes(f.key) && (
                     <Feed
+                      key={f.key}
                       user={user}
                       code={code}
                       groups={groups}
@@ -246,6 +196,9 @@ const EditGroup = ({user, code, groups, currentGroup, showGroupList}) => {
                   ),
               )}
           </List>
+          {group.feeds.length > 0 &&
+            feeds.all.filter(f => f.title && group.feeds.includes(f.key))
+              .length === 0 && <Typography sx={{m: 1}}>Loading...</Typography>}
         </Grid>
         <Typography sx={{m: 1}}>Add feeds</Typography>
         <Grid item xs={12}>
@@ -256,6 +209,7 @@ const EditGroup = ({user, code, groups, currentGroup, showGroupList}) => {
                   f.title &&
                   !group.feeds.includes(f.key) && (
                     <Feed
+                      key={f.key}
                       user={user}
                       code={code}
                       groups={groups}
