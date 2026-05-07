@@ -114,11 +114,10 @@ const FeedList = ({user, code, groups, showGroupList, appFeeds}) => {
       if (err) console.error(err)
     }
     const group = {
+      name: groupName,
       feeds: f,
-      // Show an unread count for the group and display the author, text and
-      // timestamp of the latest item. (latest field is the item key.)
       count: 0,
-      latest: 0,
+      latest: Date.now(),
       text: "",
       author: "",
       timestamp: Date.now(),
@@ -127,8 +126,7 @@ const FeedList = ({user, code, groups, showGroupList, appFeeds}) => {
     user
       .get("public")
       .next("groups")
-      .next(groupName)
-      .put(group, err => {
+      .put(group, true, err => {
         if (err) {
           setDisabledButton(false)
           setMessage("Could not create group")

@@ -78,56 +78,6 @@ describe("Display Component", () => {
     expect(user.is).toBeTruthy()
   })
 
-  it("should set up interval for checking new items on mount", async () => {
-    const setIntervalSpy = vi.spyOn(global, "setInterval")
-
-    render(
-      <Display
-        user={user}
-        host="localhost"
-        code="test-code"
-        mode="light"
-        setMode={mockSetMode}
-        feeds={{}}
-        requestMoreHistory={mockRequestMoreHistory}
-        historyDayLoaded={0}
-        maxHistoryReached={false}
-        requestDay={mockRequestDay}
-      />,
-    )
-
-    await waitFor(() => {
-      expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 10000)
-    })
-
-    setIntervalSpy.mockRestore()
-  })
-
-  it("should clean up interval on unmount", () => {
-    const clearIntervalSpy = vi.spyOn(global, "clearInterval")
-
-    const {unmount} = render(
-      <Display
-        user={user}
-        host="localhost"
-        code="test-code"
-        mode="light"
-        setMode={mockSetMode}
-        feeds={{}}
-        requestMoreHistory={mockRequestMoreHistory}
-        historyDayLoaded={0}
-        maxHistoryReached={false}
-        requestDay={mockRequestDay}
-      />,
-    )
-
-    unmount()
-
-    expect(clearIntervalSpy).toHaveBeenCalled()
-
-    clearIntervalSpy.mockRestore()
-  })
-
   it("should set up popstate event listener", async () => {
     const addEventListenerSpy = vi.spyOn(window, "addEventListener")
 

@@ -25,6 +25,14 @@ if (window.location.hostname !== "localhost") {
 }
 
 const holster = Holster({peers: peers, secure: true, indexedDB: true})
+
+function deserializeDayItems(dayItems) {
+  const result = {}
+  for (const [key, value] of Object.entries(dayItems)) {
+    result[key] = typeof value === "string" ? JSON.parse(value) : value
+  }
+  return result
+}
 // This provides access to the API via the console.
 window.holster = holster
 
@@ -62,6 +70,7 @@ const App = () => {
   })
   const [loggedIn] = useState(!!user.is)
   const [feeds, setFeeds] = useState({})
+  const [bookmarkItems, setBookmarkItems] = useState({})
   const [backgroundIndex, setBackgroundIndex] = useState(0)
   const [currentDayOffset, setCurrentDayOffset] = useState(0)
   const [historyDayLoaded, setHistoryDayLoaded] = useState(0)
@@ -378,7 +387,7 @@ const App = () => {
                 updated: Date.now(),
                 items: {
                   ...(currentFeed.items || {}),
-                  [currentDay]: items,
+                  [currentDay]: deserializeDayItems(items),
                 },
               },
             }
@@ -532,7 +541,7 @@ const App = () => {
                 ...currentFeed,
                 items: {
                   ...(currentFeed.items || {}),
-                  [dayToFetch]: dayItems,
+                  [dayToFetch]: deserializeDayItems(dayItems),
                 },
               },
             }
@@ -596,7 +605,7 @@ const App = () => {
                   updated: Date.now(),
                   items: {
                     ...(currentFeed.items || {}),
-                    [today]: items,
+                    [today]: deserializeDayItems(items),
                   },
                 },
               }
@@ -635,6 +644,27 @@ const App = () => {
     }
   }, [host, loggedIn])
 
+  useEffect(() => {
+    if (!user || !loggedIn) return
+
+    const handler = items => {
+      if (!items) return
+      const parsed = {}
+      for (const [guid, value] of Object.entries(items)) {
+        if (guid === "_" || !value) continue
+        try {
+          parsed[guid] = typeof value === "string" ? JSON.parse(value) : value
+        } catch (e) {}
+      }
+      setBookmarkItems(parsed)
+    }
+    user.get("public").next("bookmarks").on(handler, true)
+
+    return () => {
+      user.get("public").next("bookmarks").off(handler)
+    }
+  }, [loggedIn])
+
   // Directly fetch a specific day for all given feed URLs. Used to pre-load
   // the day containing group.latest when a group's data arrives from Holster,
   // so the item is ready before the user opens the group.
@@ -647,6 +677,7 @@ const App = () => {
           .next(url)
           .next(dayKey, dayItems => {
             if (!dayItems) return
+
             setFeeds(f => {
               const currentFeed = f[url] || {url: "", title: "", image: ""}
               return {
@@ -655,7 +686,7 @@ const App = () => {
                   ...currentFeed,
                   items: {
                     ...(currentFeed.items || {}),
-                    [dayKey]: dayItems,
+                    [dayKey]: deserializeDayItems(dayItems),
                   },
                 },
               }
@@ -777,6 +808,7 @@ const App = () => {
                     historyDayLoaded={historyDayLoaded}
                     maxHistoryReached={currentDayOffset > 14}
                     requestDay={requestDay}
+                    bookmarkItems={bookmarkItems}
                   />
                 ) : (
                   <Help />

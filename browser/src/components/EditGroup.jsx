@@ -19,10 +19,13 @@ const EditGroup = ({
   showGroupList,
   appFeeds,
 }) => {
-  const [group, setGroup] = useState(() => {
-    return groups.all.find(g => g.key === currentGroup)
+  const [group, setGroup] = useState(() =>
+    groups.all.find(g => g.key === currentGroup),
+  )
+  const [groupName, setGroupName] = useState(() => {
+    const g = groups.all.find(gr => gr.key === currentGroup)
+    return g?.name || ""
   })
-  const [groupName, setGroupName] = useState(currentGroup)
   const [selected, setSelected] = useState([])
   const [message, setMessage] = useState("")
   const [disabledButton, setDisabledButton] = useState(false)
@@ -76,8 +79,8 @@ const EditGroup = ({
       return
     }
 
-    const allFeeds = [...group.feeds, ...selected]
-    if (allFeeds.length === 0) {
+    const allFeeds = [...(group.feeds || []), ...selected]
+    if (!group.bookmarks && allFeeds.length === 0) {
       const check = "Removing all feeds will remove the group. Continue?"
       if (!window.confirm(check)) return
     }
@@ -85,48 +88,48 @@ const EditGroup = ({
     setDisabledButton(true)
     setMessage("Updating group...")
 
-    // Convert feeds to an object to store in Holster.
-    // See Display useEffect which converts back to an array.
-    let f = {}
-    for (let i = 0; i < allFeeds.length; i++) {
-      const url = allFeeds[i]
-      const feed = feeds.all.find(current => current.key === url)
-      if (!feed) continue
+    let data
+    if (group.bookmarks) {
+      data = {
+        name: groupName,
+        bookmarks: true,
+        count: group.count || 0,
+        latest: group.latest || 0,
+        timestamp: group.timestamp || 0,
+        text: group.text || "",
+        author: group.author || "",
+      }
+    } else {
+      // Convert feeds to an object to store in Holster.
+      // See Display useEffect which converts back to an array.
+      let f = {}
+      for (let i = 0; i < allFeeds.length; i++) {
+        const url = allFeeds[i]
+        const feed = feeds.all.find(current => current.key === url)
+        if (!feed) continue
 
-      f[url] = true
-      // Store each feed for the user to listen for updates in App.js.
-      const err = await new Promise(res => {
-        user.get("public").next("feeds").next(url).put(feed, res)
-      })
-      if (err) console.error(err)
-    }
-    const data = {
-      feeds: f,
-      count: 0,
-      latest: 0,
-      text: "",
-      author: "",
-      timestamp: Date.now(),
-    }
-    // Delete the old group if the name changes.
-    if (group.key && group.key !== groupName) {
-      const removed = {
-        feeds: null,
+        f[url] = true
+        // Store each feed for the user to listen for updates in App.js.
+        const err = await new Promise(res => {
+          user.get("public").next("feeds").next(url).put(feed, res)
+        })
+        if (err) console.error(err)
+      }
+      data = {
+        name: groupName,
+        feeds: f,
         count: 0,
         latest: 0,
         text: "",
         author: "",
-        timestamp: 0,
+        timestamp: Date.now(),
       }
-      const err = await new Promise(res => {
-        user.get("public").next("groups").next(group.key).put(removed, res)
-      })
-      if (err) console.error(err)
     }
+
     user
       .get("public")
       .next("groups")
-      .next(groupName)
+      .next(group.key)
       .put(data, err => {
         if (err) {
           setDisabledButton(false)
@@ -175,60 +178,69 @@ const EditGroup = ({
             </CardContent>
           </Card>
         </Grid>
-        <Typography sx={{m: 1}}>Current feeds</Typography>
-        <Grid item xs={12}>
-          <List>
-            {feeds &&
-              feeds.all.map(
-                f =>
-                  f.title &&
-                  group.feeds.includes(f.key) && (
-                    <Feed
-                      key={f.key}
-                      user={user}
-                      code={code}
-                      groups={groups}
-                      currentGroup={currentGroup}
-                      feed={f}
-                      selected={false}
-                      selectFeed={() => {}}
-                    />
-                  ),
-              )}
-          </List>
-          {group.feeds.length > 0 &&
-            feeds.all.filter(f => f.title && group.feeds.includes(f.key))
-              .length === 0 && <Typography sx={{m: 1}}>Loading...</Typography>}
-        </Grid>
-        <Typography sx={{m: 1}}>Add feeds</Typography>
-        <Grid item xs={12}>
-          <List>
-            {feeds &&
-              feeds.all.map(
-                f =>
-                  f.title &&
-                  !group.feeds.includes(f.key) && (
-                    <Feed
-                      key={f.key}
-                      user={user}
-                      code={code}
-                      groups={groups}
-                      currentGroup={currentGroup}
-                      feed={f}
-                      selected={selected.includes(f.key)}
-                      selectFeed={selectFeed}
-                    />
-                  ),
-              )}
-          </List>
-          {feeds &&
-            feeds.all.filter(f => f.title && !group.feeds.includes(f.key))
-              .length === 0 && (
-              <Typography sx={{m: 1}}>
-                No more feeds available. Click add feed in the menu to add more.
-              </Typography>
-            )}
-        </Grid>
+        {!group.bookmarks && (
+          <>
+            <Typography sx={{m: 1}}>Current feeds</Typography>
+            <Grid item xs={12}>
+              <List>
+                {feeds &&
+                  feeds.all.map(
+                    f =>
+                      f.title &&
+                      (group.feeds || []).includes(f.key) && (
+                        <Feed
+                          key={f.key}
+                          user={user}
+                          code={code}
+                          groups={groups}
+                          currentGroup={currentGroup}
+                          feed={f}
+                          selected={false}
+                          selectFeed={() => {}}
+                        />
+                      ),
+                  )}
+              </List>
+              {(group.feeds || []).length > 0 &&
+                feeds.all.filter(
+                  f => f.title && (group.feeds || []).includes(f.key),
+                ).length === 0 && (
+                  <Typography sx={{m: 1}}>Loading...</Typography>
+                )}
+            </Grid>
+            <Typography sx={{m: 1}}>Add feeds</Typography>
+            <Grid item xs={12}>
+              <List>
+                {feeds &&
+                  feeds.all.map(
+                    f =>
+                      f.title &&
+                      !(group.feeds || []).includes(f.key) && (
+                        <Feed
+                          key={f.key}
+                          user={user}
+                          code={code}
+                          groups={groups}
+                          currentGroup={currentGroup}
+                          feed={f}
+                          selected={selected.includes(f.key)}
+                          selectFeed={selectFeed}
+                        />
+                      ),
+                  )}
+              </List>
+              {feeds &&
+                feeds.all.filter(
+                  f => f.title && !(group.feeds || []).includes(f.key),
+                ).length === 0 && (
+                  <Typography sx={{m: 1}}>
+                    No more feeds available. Click add feed in the menu to add
+                    more.
+                  </Typography>
+                )}
+            </Grid>
+          </>
+        )}
       </Grid>
     </Container>
   )

@@ -1,5 +1,6 @@
 import {useRef, useState} from "react"
-import {styled, alpha} from "@mui/material/styles"
+import {styled, alpha, useTheme} from "@mui/material/styles"
+import useMediaQuery from "@mui/material/useMediaQuery"
 import {red} from "@mui/material/colors"
 import AppBar from "@mui/material/AppBar"
 import Box from "@mui/material/Box"
@@ -29,10 +30,12 @@ const Search = styled("div", {
   },
   marginRight: theme.spacing(2),
   marginLeft: 0,
-  width: collapsed ? theme.spacing(7) : "100%",
+  width: collapsed ? "auto" : "100%",
   ...(collapsed && {
-    transition: theme.transitions.create("width"),
-    "&:focus-within": {width: "auto"},
+    maxWidth: theme.spacing(7),
+    overflow: "hidden",
+    transition: theme.transitions.create("max-width"),
+    "&:focus-within": {maxWidth: "200px"},
   }),
   [theme.breakpoints.up("sm")]: {
     marginLeft: theme.spacing(3),
@@ -64,9 +67,6 @@ const StyledInputBase = styled(InputBase, {
     }),
     [theme.breakpoints.up("sm")]: {
       width: "12ch",
-      "&:focus": {
-        width: "20ch",
-      },
     },
     [theme.breakpoints.up("md")]: {
       width: "20ch",
@@ -83,7 +83,11 @@ const SearchAppBar = ({
   mode,
   setMode,
   title,
+  groupId,
 }) => {
+  const theme = useTheme()
+  const isSmall = useMediaQuery(theme.breakpoints.down("sm"))
+  const collapsed = !!title && isSmall
   const searchInputRef = useRef(null)
   const [anchorEl, setAnchorEl] = useState(null)
   const [mobileMoreAnchorEl, setMobileMoreAnchorEl] = useState(null)
@@ -257,7 +261,7 @@ const SearchAppBar = ({
                 overflow: "hidden",
                 display: "block",
               }}
-              onClick={() => editGroup(title)}
+              onClick={() => editGroup(groupId)}
             >
               {title}
             </Button>
@@ -273,14 +277,14 @@ const SearchAppBar = ({
           )}
           <Box sx={{flexGrow: 1}} />
           <Search
-            collapsed={!!title}
+            collapsed={collapsed}
             onClick={() => searchInputRef.current?.focus()}
           >
             <SearchIconWrapper>
               <SearchIcon />
             </SearchIconWrapper>
             <StyledInputBase
-              collapsed={!!title}
+              collapsed={collapsed}
               inputRef={searchInputRef}
               placeholder="Search…"
               inputProps={{"aria-label": "search"}}

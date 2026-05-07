@@ -45,9 +45,10 @@ describe("Group Component", () => {
     expect(container.querySelector(".MuiListItem-root")).toBeTruthy()
   })
 
-  it("should render group key as primary text", () => {
+  it("should render group name as primary text", () => {
     const group = {
-      key: "My Test Group",
+      key: "some-random-soul-id",
+      name: "My Test Group",
       feeds: [],
       timestamp: Date.now(),
       author: "Test Author",

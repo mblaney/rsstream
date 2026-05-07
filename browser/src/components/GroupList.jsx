@@ -8,12 +8,20 @@ import List from "@mui/material/List"
 import Typography from "@mui/material/Typography"
 import Group from "./Group"
 
-const GroupList = ({groups, groupsLoaded, setGroup}) => {
+const GroupList = ({
+  groups,
+  groupsLoaded,
+  groupsUpdating,
+  setGroup,
+  hasBookmarks,
+}) => {
   const [message, setMessage] = useState("")
 
   const hasGroups =
     groups &&
-    groups.all.filter(g => g.feeds && g.feeds.length !== 0).length !== 0
+    groups.all.filter(
+      g => (g.bookmarks && hasBookmarks) || (g.feeds && g.feeds.length !== 0),
+    ).length !== 0
 
   useEffect(() => {
     if (hasGroups) {
@@ -36,21 +44,21 @@ const GroupList = ({groups, groupsLoaded, setGroup}) => {
     <Container maxWidth="md">
       <Grid container>
         <Grid item xs={12}>
-          <List>
-            {groups &&
-              groups.all.map(
-                group =>
-                  group.feeds &&
-                  group.feeds.length !== 0 && (
-                    <Group key={group.key} group={group} setGroup={setGroup} />
-                  ),
-              )}
-          </List>
-          {!groupsLoaded && (
+          {(!groupsLoaded || groupsUpdating) && (
             <Box sx={{display: "flex", justifyContent: "center", p: 2}}>
               <CircularProgress />
             </Box>
           )}
+          <List>
+            {groups &&
+              groups.all.map(
+                group =>
+                  ((group.bookmarks && hasBookmarks) ||
+                    (group.feeds && group.feeds.length !== 0)) && (
+                    <Group key={group.key} group={group} setGroup={setGroup} />
+                  ),
+              )}
+          </List>
           {message && <Typography align="center">{parse(message)}</Typography>}
         </Grid>
       </Grid>

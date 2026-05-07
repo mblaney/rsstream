@@ -9,18 +9,22 @@ import {logEvent} from "../utils/debugEvents"
 import Item from "./Item"
 
 const ItemList = ({
+  user,
   group,
   feeds,
-  newItems,
   setMessage,
   requestMoreHistory,
   historyDayLoaded,
   maxHistoryReached,
+  bookmarkItems,
+  bookmarkGroup,
 }) => {
   const sort = (a, b) => a.timestamp - b.timestamp
   const [items, updateItem] = useReducer(reducer(sort), init)
   const feedsRef = useRef(feeds)
   feedsRef.current = feeds
+  const bookmarkItemsRef = useRef(bookmarkItems)
+  bookmarkItemsRef.current = bookmarkItems
   const groupKeyRef = useRef("")
   const [newFrom, setNewFrom] = useState(0)
   const [scrollToEnd, setScrollToEnd] = useState(false)
@@ -28,12 +32,9 @@ const ItemList = ({
   const itemRefs = useRef(new Map())
   const itemsRef = useRef(items)
   const oldestTimestampRef = useRef(Date.now())
-  const lastKey = useRef(Date.now())
   const watchStart = useRef()
-  const watchEnd = useRef()
   const needsMoreItemsRef = useRef(false)
   const isMountedRef = useRef(true)
-  const newItemsBaseRef = useRef(0)
   const maxHistoryReachedRef = useRef(maxHistoryReached)
 
   // Cleanup mounted flag on unmount
@@ -80,7 +81,9 @@ const ItemList = ({
   useEffect(() => {
     if (!scrollToEnd || items.all.length === 0) return
 
-    window.scrollTo(0, document.body.scrollHeight)
+    setTimeout(() => {
+      window.scrollTo(0, document.body.scrollHeight)
+    }, 100)
     document.body.onscroll = () => {
       setTimeout(() => {
         setScrollToEnd(false)
@@ -97,7 +100,7 @@ const ItemList = ({
         if (!feed || !feed.items || !feed.items[item.day]) continue
 
         const feedItem = feed.items[item.day][item.key]
-        if (!feedItem) continue
+        if (!feedItem || typeof feedItem !== "object") continue
 
         updateItem({
           key: item.key,
@@ -247,13 +250,17 @@ const ItemList = ({
 
     if (groupKeyRef.current === group.key) return
     groupKeyRef.current = group.key
-    newItemsBaseRef.current = newItems ? newItems.length : 0
 
     if (isMountedRef.current) {
       setScrollToEnd(true)
-      setLoading(true)
+      setLoading(false)
       setMessage("")
+      setNewFrom(0)
     }
+
+    if (group.bookmarks) return
+
+    if (isMountedRef.current) setLoading(true)
 
     const from = Date.now()
     const initialItems = getGroupItems(group, feedsRef.current, from, 10)
@@ -285,6 +292,7 @@ const ItemList = ({
       renderItems(initialItems)
       oldestTimestampRef.current =
         initialItems[initialItems.length - 1].timestamp
+      setNewFrom(initialItems[0].key)
       setLoading(false)
       // Set up observer after items are rendered
       const timeoutId = setTimeout(() => {
@@ -304,7 +312,6 @@ const ItemList = ({
     }
   }, [
     group,
-    newItems,
     renderItems,
     setupLoadMoreObserver,
     setMessage,
@@ -312,12 +319,12 @@ const ItemList = ({
     requestMoreHistory,
   ])
 
-  // When feeds change and a group is open, render any items that have arrived in
-  // feedsRef but haven't been rendered yet. This catches two cases:
+  // When feeds change and a group is open, render any items that have arrived
+  // in feedsRef but haven't been rendered yet. This catches two cases:
   //   1. requestDay items whose timestamps are <= g.latest, so checkForNewItems
   //      skips them even though they haven't been rendered yet.
   //   2. Items that arrive from itemHandler before the background loader has
-  //      started (feedsLoaded not yet true), which historyDayLoaded can't catch.
+  //      started (feedsLoaded not yet true) which historyDayLoaded can't catch.
   useEffect(() => {
     if (!group) return
 
@@ -335,73 +342,24 @@ const ItemList = ({
     if (oldestInBatch < oldestTimestampRef.current) {
       oldestTimestampRef.current = oldestInBatch
     }
+
     setTimeout(() => {
       if (isMountedRef.current) setupLoadMoreObserver()
     }, 100)
   }, [feeds, group, renderItems, setupLoadMoreObserver, setMessage])
 
-  // Watch for new items passed from parent (Display component)
+  // Re-render bookmark list when bookmarkItems changes (add or remove)
   useEffect(() => {
-    if (!group || !newItems || newItems.length === 0) return
+    if (!group?.bookmarks) return
 
-    if (!watchEnd.current) {
-      watchEnd.current = new IntersectionObserver(e => {
-        if (e[0].isIntersecting) {
-          const timeoutId = setTimeout(() => {
-            if (isMountedRef.current) {
-              setNewFrom(0)
-            }
-          }, 5000)
-          return () => clearTimeout(timeoutId)
-        }
-      })
+    updateItem({reset: true})
+    const sorted = Object.values(bookmarkItems || {})
+      .filter(item => item && item.guid)
+      .sort((a, b) => b.timestamp - a.timestamp)
+    for (const item of sorted) {
+      updateItem(item)
     }
-
-    let earliest = 0
-    let latest = 0
-    const itemsToRender = []
-
-    // Render items that arrived after this group was selected and not already rendered
-    for (const newItem of newItems.slice(newItemsBaseRef.current)) {
-      if (!group.feeds || !group.feeds.includes(newItem.feedUrl)) continue
-      if (items.keys.includes(newItem.key)) continue
-
-      itemsToRender.push(newItem)
-
-      if (newItem.key < earliest || earliest === 0) earliest = newItem.key
-      if (newItem.key > latest || latest === 0) latest = newItem.key
-    }
-
-    // Batch render all new items at once
-    if (itemsToRender.length > 0) {
-      renderItems(itemsToRender)
-    }
-
-    // Update observer if we have new items
-    if (latest !== 0) {
-      if (earliest !== 0 && newFrom === 0) {
-        setNewFrom(earliest)
-      }
-
-      // Short delay to allow React to render new items and populate itemRefs
-      // before setting up the intersection observer.
-      const timeoutId = setTimeout(() => {
-        if (isMountedRef.current) {
-          const currentTarget = itemRefs.current.get(lastKey.current)
-          if (currentTarget && watchEnd.current) {
-            watchEnd.current.unobserve(currentTarget)
-          }
-          lastKey.current = latest
-          const newTarget = itemRefs.current.get(latest)
-          if (newTarget && watchEnd.current) {
-            watchEnd.current.observe(newTarget)
-          }
-        }
-      }, 200)
-
-      return () => clearTimeout(timeoutId)
-    }
-  }, [group, items.keys, renderItems, newFrom, newItems])
+  }, [bookmarkItems, group])
 
   return (
     <Container maxWidth="md">
@@ -414,7 +372,22 @@ const ItemList = ({
         {group &&
           items &&
           items.all.map(i => (
-            <Item key={i.key} item={i} itemRefs={itemRefs} newFrom={newFrom} />
+            <Item
+              key={i.key}
+              item={i}
+              itemRefs={itemRefs}
+              newFrom={
+                newFrom !== 0 &&
+                items.all.findIndex(i => i.key === newFrom) <
+                  items.all.length - 1
+                  ? newFrom
+                  : 0
+              }
+              isBookmarked={bookmarkItems ? i.guid in bookmarkItems : false}
+              isBookmarkGroup={!!group?.bookmarks}
+              bookmarkGroup={bookmarkGroup}
+              user={user}
+            />
           ))}
       </Grid>
     </Container>

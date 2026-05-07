@@ -5,6 +5,7 @@ import ListItemAvatar from "@mui/material/ListItemAvatar"
 import ListItemButton from "@mui/material/ListItemButton"
 import ListItemText from "@mui/material/ListItemText"
 import Typography from "@mui/material/Typography"
+import BookmarkIcon from "@mui/icons-material/Bookmark"
 import PersonIcon from "@mui/icons-material/Person"
 import GroupIcon from "@mui/icons-material/Group"
 import {formatDate} from "../utils/format.js"
@@ -23,7 +24,9 @@ const Group = ({group, setGroup}) => {
             <Avatar alt={`Avatar for ${group.name}`} src={group.image} />
           ) : (
             <Avatar>
-              {group.feeds && group.feeds.length > 1 ? (
+              {group.bookmarks ? (
+                <BookmarkIcon />
+              ) : group.feeds && group.feeds.length > 1 ? (
                 <GroupIcon />
               ) : (
                 <PersonIcon />
@@ -34,7 +37,7 @@ const Group = ({group, setGroup}) => {
         <ListItemText
           primary={
             <Typography variant="h6" component="div" sx={{display: "flex"}}>
-              <span style={{flexGrow: 1}}>{group.key}</span>
+              <span style={{flexGrow: 1}}>{group.name || "Untitled"}</span>
               <Typography
                 variant="body2"
                 sx={{color: "text.secondary"}}
@@ -47,7 +50,7 @@ const Group = ({group, setGroup}) => {
           secondary={
             <Typography component="div" sx={{display: "flex"}}>
               <span style={{flexGrow: 1}}>
-                {`${group.author && `${group.author}: `}${group.text}`}
+                {`${group.author ? `${group.author}: ` : ""}${group.text || ""}`}
               </span>
               {group.count > 0 && (
                 <Avatar

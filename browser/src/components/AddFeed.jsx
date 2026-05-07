@@ -1,4 +1,5 @@
 import {useState} from "react"
+import {defaultFeeds} from "../utils/defaultFeeds.js"
 import CheckCircleIcon from "@mui/icons-material/CheckCircle"
 import Box from "@mui/material/Box"
 import Button from "@mui/material/Button"
@@ -108,11 +109,6 @@ const AddFeed = ({user, host, code, debugMode}) => {
         return false
       }
 
-      if (!calledFromList) {
-        setMessage("Feed added")
-        setFeedAdded(true)
-      }
-
       try {
         const signedUrl = await user.SEA.sign(targetUrl, user.is)
         const res = await fetch(`${window.location.origin}/add-subscriber`, {
@@ -125,7 +121,35 @@ const AddFeed = ({user, host, code, debugMode}) => {
         console.error(error)
       }
 
-      if (!calledFromList) setDisabledButton(false)
+      if (!calledFromList) {
+        const storedResults = await new Promise(res => {
+          user.get("public").next("feeds").next(targetUrl).next("results", res)
+        })
+        if (storedResults) {
+          const otherResults = Object.entries(storedResults)
+            .filter(([url]) => url !== "_")
+            .map(([url, name]) => ({
+              url,
+              name: name || url,
+              selected: false,
+              added: false,
+            }))
+          if (otherResults.length > 0) {
+            setMessage("")
+            setAddedFeedInfo({
+              url: targetUrl,
+              title: feed.title || targetUrl,
+            })
+            setOtherFeeds(otherResults)
+          } else {
+            setMessage("Feed added")
+          }
+        } else {
+          setMessage("Feed added")
+        }
+        setFeedAdded(true)
+        setDisabledButton(false)
+      }
       return true
     }
 
@@ -159,12 +183,23 @@ const AddFeed = ({user, host, code, debugMode}) => {
         return false
       }
 
+      const otherResults = json.results
+        ? json.results.filter(f => f.url !== json.add.url)
+        : []
+
+      const defaultFeed = defaultFeeds.find(f => f.key === json.add.url)
       const data = {
-        title: json.add.title ?? "",
-        description: json.add.description ?? "",
-        html_url: json.add.html_url ?? "",
-        language: json.add.language ?? "",
-        image: json.add.image ?? "",
+        title: json.add.title || defaultFeed?.title || "",
+        description: json.add.description || defaultFeed?.description || "",
+        html_url: json.add.html_url || defaultFeed?.html_url || "",
+        language: json.add.language || defaultFeed?.language || "",
+        image: json.add.image || defaultFeed?.image || "",
+      }
+      if (otherResults.length > 0) {
+        data.results = {}
+        for (const f of otherResults) {
+          data.results[f.url] = resolveName(f)
+        }
       }
       const err = await new Promise(res => {
         user.get("public").next("feeds").next(json.add.url).put(data, res)
@@ -178,9 +213,6 @@ const AddFeed = ({user, host, code, debugMode}) => {
 
       if (!calledFromList) {
         setFeedAdded(true)
-        const otherResults = json.results
-          ? json.results.filter(f => f.url !== json.add.url)
-          : []
         if (otherResults.length > 0) {
           setMessage("")
           setAddedFeedInfo({

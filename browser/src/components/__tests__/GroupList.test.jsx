@@ -95,8 +95,18 @@ describe("GroupList Component", () => {
   it("should render groups with feeds", () => {
     const groups = {
       all: [
-        {key: "group1", feeds: ["https://feed1.com"], timestamp: Date.now()},
-        {key: "group2", feeds: ["https://feed2.com"], timestamp: Date.now()},
+        {
+          key: "id1",
+          name: "group1",
+          feeds: ["https://feed1.com"],
+          timestamp: Date.now(),
+        },
+        {
+          key: "id2",
+          name: "group2",
+          feeds: ["https://feed2.com"],
+          timestamp: Date.now(),
+        },
       ],
     }
 
@@ -112,11 +122,12 @@ describe("GroupList Component", () => {
     const groups = {
       all: [
         {
-          key: "group-with-feeds",
+          key: "id-with-feeds",
+          name: "group-with-feeds",
           feeds: ["https://feed1.com"],
           timestamp: Date.now(),
         },
-        {key: "group-without-feeds", feeds: []},
+        {key: "id-without-feeds", name: "group-without-feeds", feeds: []},
       ],
     }
 
@@ -132,7 +143,8 @@ describe("GroupList Component", () => {
     const groups = {
       all: [
         {
-          key: "multi-feed-group",
+          key: "some-id",
+          name: "multi-feed-group",
           feeds: [
             "https://feed1.com",
             "https://feed2.com",
@@ -171,6 +183,89 @@ describe("GroupList Component", () => {
 
     // Message should be cleared immediately when groups have feeds
     expect(container.textContent).not.toContain("Welcome")
+  })
+
+  it("should show bookmark group when hasBookmarks is true", () => {
+    const groups = {
+      all: [{key: "bm-id", name: "Bookmarks", bookmarks: true, latest: 123}],
+    }
+
+    const {container} = render(
+      <GroupList groups={groups} setGroup={mockSetGroup} hasBookmarks={true} />,
+    )
+
+    expect(container.textContent).toContain("Bookmarks")
+  })
+
+  it("should hide bookmark group when hasBookmarks is false", () => {
+    const groups = {
+      all: [{key: "bm-id", name: "Bookmarks", bookmarks: true, latest: 123}],
+    }
+
+    const {container} = render(
+      <GroupList
+        groups={groups}
+        setGroup={mockSetGroup}
+        hasBookmarks={false}
+      />,
+    )
+
+    expect(container.textContent).not.toContain("Bookmarks")
+  })
+
+  it("should hide bookmark group when hasBookmarks is not provided", () => {
+    const groups = {
+      all: [{key: "bm-id", name: "Bookmarks", bookmarks: true, latest: 123}],
+    }
+
+    const {container} = render(
+      <GroupList groups={groups} setGroup={mockSetGroup} />,
+    )
+
+    expect(container.textContent).not.toContain("Bookmarks")
+  })
+
+  it("should show welcome message when only an empty bookmark group exists", () => {
+    const groups = {
+      all: [{key: "bm-id", name: "Bookmarks", bookmarks: true}],
+    }
+
+    const {container} = render(
+      <GroupList
+        groups={groups}
+        groupsLoaded={true}
+        setGroup={mockSetGroup}
+        hasBookmarks={false}
+      />,
+    )
+
+    act(() => vi.advanceTimersByTime(500))
+    expect(container.textContent).toContain("Welcome")
+  })
+
+  it("should still show feed groups alongside an empty bookmark group", () => {
+    const groups = {
+      all: [
+        {key: "bm-id", name: "Bookmarks", bookmarks: true},
+        {
+          key: "fg-id",
+          name: "My Feeds",
+          feeds: ["https://feed.com"],
+          timestamp: Date.now(),
+        },
+      ],
+    }
+
+    const {container} = render(
+      <GroupList
+        groups={groups}
+        setGroup={mockSetGroup}
+        hasBookmarks={false}
+      />,
+    )
+
+    expect(container.textContent).not.toContain("Bookmarks")
+    expect(container.textContent).toContain("My Feeds")
   })
 
   it("should handle groups prop updates", () => {

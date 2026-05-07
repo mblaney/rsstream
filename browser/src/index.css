@@ -25,9 +25,3 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-code {
-  background-color: #eeeeee;
-  font-family: source-code-pro, Menlo, Monaco, Consolas, monospace;
-  padding: 2px;
-}

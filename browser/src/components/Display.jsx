@@ -22,6 +22,7 @@ const Display = ({
   historyDayLoaded,
   maxHistoryReached,
   requestDay,
+  bookmarkItems,
 }) => {
   const sortByLatest = (a, b) => b.latest - a.latest
   const [groups, updateGroup] = useReducer(reducer(sortByLatest), init)
@@ -31,11 +32,14 @@ const Display = ({
   const [message, setMessage] = useState("")
   const [feedList, setFeedList] = useState(false)
   const [addFeed, setAddFeed] = useState(false)
-  const [newItems, setNewItems] = useState([])
   const [groupsLoaded, setGroupsLoaded] = useState(false)
+  const [groupsUpdating, setGroupsUpdating] = useState(false)
   const statsRef = useRef(new Map())
+  const updatingTimerRef = useRef(null)
   const feedsRef = useRef(feeds)
   feedsRef.current = feeds // Update synchronously so child effects always see current feeds
+  const groupRef = useRef(group)
+  groupRef.current = group // sync so popstate handler sees current group
   const groupsRef = useRef(groups)
 
   const createGroup = () => {
@@ -48,9 +52,9 @@ const Display = ({
     window.history.pushState(null, "")
   }
 
-  const editGroup = groupName => {
+  const editGroup = groupId => {
     setGroupList(false)
-    setCurrentGroup(groupName)
+    setCurrentGroup(groupId)
     setFeedList(false)
     setAddFeed(false)
     setGroup(null)
@@ -73,20 +77,34 @@ const Display = ({
     window.history.pushState(null, "")
   }
 
-  const showGroupList = reset => {
-    if (reset) {
-      window.location = "/"
-      return
-    }
+  const showGroupList = useCallback(
+    reset => {
+      if (reset) {
+        window.location = "/"
+        return
+      }
 
-    setGroupList(true)
-    setCurrentGroup("")
-    setFeedList(false)
-    setAddFeed(false)
-    setMessage("")
-    setGroup(null)
-    window.scrollTo(0, 0)
-  }
+      const leavingGroup = groupRef.current
+      if (leavingGroup && user) {
+        user
+          .get("public")
+          .next("groups")
+          .next(leavingGroup.key)
+          .next("count")
+          .put(0, err => {
+            if (err) console.error(err)
+          })
+      }
+      setGroupList(true)
+      setCurrentGroup("")
+      setFeedList(false)
+      setAddFeed(false)
+      setMessage("")
+      setGroup(null)
+      window.scrollTo(0, 0)
+    },
+    [user],
+  )
 
   // The above functions are all display modes of this component and avoid
   // rendering so that the item list doesn't need re-mapping which is slow.
@@ -94,11 +112,11 @@ const Display = ({
     const handler = () => showGroupList(false)
     window.addEventListener("popstate", handler)
     return () => window.removeEventListener("popstate", handler)
-  }, [])
+  }, [showGroupList])
 
   const resetGroup = useCallback(
     key => {
-      if (!user || !key || !group || group.count === 0) return
+      if (!user || !key || !group) return
 
       user
         .get("public")
@@ -128,16 +146,13 @@ const Display = ({
     [user],
   )
 
-  // Detect new items and update group stats. Called when feeds update and on
-  // a 10-second interval to catch items that arrive after the initial load.
+  // Detect new items and update group stats whenever feeds or groups change.
   const checkForNewItems = useCallback(() => {
     const feeds = feedsRef.current
     const groups = groupsRef.current
 
     if (Object.keys(feeds).length === 0 || !groups || groups.all.length === 0)
       return
-
-    const foundNewItems = []
 
     // Collect new stats across all loaded days for each group.
     groups.all.forEach(g => {
@@ -150,13 +165,11 @@ const Display = ({
         const f = feeds[url]
         if (!f || !f.items) return
 
-        for (const [day, dayItems] of Object.entries(f.items)) {
+        for (const [, dayItems] of Object.entries(f.items)) {
           if (!dayItems) continue
-          for (const [itemKey, item] of Object.entries(dayItems)) {
+          for (const [, item] of Object.entries(dayItems)) {
             if (!item || !item.timestamp) continue
             if (item.timestamp <= groupLastCheck) continue
-
-            foundNewItems.push({key: itemKey, feedUrl: url, day: Number(day)})
 
             const tag = /(<([^>]+)>)/g
             const text = item.title
@@ -186,11 +199,6 @@ const Display = ({
       })
     })
 
-    // Update new items for ItemList to display
-    if (foundNewItems.length > 0) {
-      setNewItems(prev => [...prev, ...foundNewItems])
-    }
-
     // Immediately update local state so subsequent calls use the new latest,
     // then persist to Holster.
     if (statsRef.current.size > 0) {
@@ -211,8 +219,7 @@ const Display = ({
     }
   }, [setGroupStats, updateGroup])
 
-  // Re-run stats check whenever feeds or groups change so new items are
-  // reflected immediately rather than waiting for the interval.
+  // Re-run stats check whenever feeds or groups change.
   useEffect(() => {
     groupsRef.current = groups
     checkForNewItems()
@@ -224,13 +231,6 @@ const Display = ({
       resetGroup(group.key)
     }
   }, [group, resetGroup])
-
-  // Also run stats check on a 10-second interval for items that arrive via
-  // the persistent wire listener after the initial feed load.
-  useEffect(() => {
-    const intervalId = setInterval(checkForNewItems, 10000)
-    return () => clearInterval(intervalId)
-  }, [checkForNewItems])
 
   // Initial effect to set up the existing groups for the user.
   useEffect(() => {
@@ -263,18 +263,32 @@ const Display = ({
         }
         groupUpdate.feeds = groupFeeds
       }
+      if (g.name !== undefined) groupUpdate.name = g.name
+      if (g.bookmarks !== undefined) groupUpdate.bookmarks = g.bookmarks
       if (g.count !== undefined) groupUpdate.count = g.count
-      if (g.latest !== undefined) groupUpdate.latest = g.latest
+
+      // Don't revert latest/timestamp to older values — Holster may fire the
+      // on handler with stale data (e.g. a resetGroup write delivering old
+      // values) before checkForNewItems has persisted the new ones.
+      const knownGroup = groupsRef.current.all.find(gr => gr.key === name)
+      if (g.latest !== undefined && g.latest >= (knownGroup?.latest ?? 0)) {
+        groupUpdate.latest = g.latest
+      }
       if (g.text !== undefined) groupUpdate.text = g.text
       if (g.author !== undefined) groupUpdate.author = g.author
-      if (g.timestamp !== undefined) groupUpdate.timestamp = g.timestamp
+      if (
+        g.timestamp !== undefined &&
+        g.timestamp >= (knownGroup?.timestamp ?? 0)
+      ) {
+        groupUpdate.timestamp = g.timestamp
+      }
       updateGroup(groupUpdate)
-
-      // Request the day containing the latest item so it's loaded before the
-      // user opens the group. Holster delivers partial updates so feeds and
-      // latest may arrive in separate callbacks — fall back to the current
-      // known group state for whichever field is missing from this update.
-      const knownGroup = groupsRef.current.all.find(gr => gr.key === name)
+      setGroupsUpdating(true)
+      clearTimeout(updatingTimerRef.current)
+      updatingTimerRef.current = setTimeout(
+        () => setGroupsUpdating(false),
+        5000,
+      )
       const effectiveLatest =
         g.latest > 0 ? g.latest : (knownGroup?.latest ?? 0)
       const effectiveFeeds =
@@ -295,7 +309,7 @@ const Display = ({
     // Track per-group listeners for cleanup.
     const groupListeners = new Map()
 
-    user.get("public").next("groups", data => {
+    const groupsHandler = data => {
       if (!data) {
         setGroupsLoaded(true)
         return
@@ -308,9 +322,12 @@ const Display = ({
         user.get("public").next("groups").next(name).on(handler, true)
       }
       setGroupsLoaded(true)
-    })
+    }
+    user.get("public").next("groups").on(groupsHandler, true)
 
     return () => {
+      clearTimeout(updatingTimerRef.current)
+      user.get("public").next("groups").off(groupsHandler)
       for (const [name, handler] of groupListeners.entries()) {
         user.get("public").next("groups").next(name).off(handler)
       }
@@ -328,14 +345,17 @@ const Display = ({
           createFeed={createFeed}
           mode={mode}
           setMode={setMode}
-          title={group ? group.key : ""}
+          title={group ? group.name || "Untitled" : ""}
+          groupId={group ? group.key : ""}
         />
       )}
       {groupList && !group && (
         <GroupList
           groups={groups}
           groupsLoaded={groupsLoaded}
+          groupsUpdating={groupsUpdating}
           setGroup={showGroup}
+          hasBookmarks={Object.keys(bookmarkItems).length > 0}
         />
       )}
       {currentGroup && (
@@ -363,15 +383,19 @@ const Display = ({
       <Box sx={{display: "flex", justifyContent: "center", p: 4}}>
         <Typography>{message}</Typography>
       </Box>
-      <ItemList
-        group={group}
-        feeds={feeds}
-        newItems={newItems}
-        setMessage={setMessage}
-        requestMoreHistory={requestMoreHistory}
-        historyDayLoaded={historyDayLoaded}
-        maxHistoryReached={maxHistoryReached}
-      />
+      {groupsLoaded && (
+        <ItemList
+          group={group}
+          feeds={feeds}
+          setMessage={setMessage}
+          requestMoreHistory={requestMoreHistory}
+          historyDayLoaded={historyDayLoaded}
+          maxHistoryReached={maxHistoryReached}
+          user={user}
+          bookmarkItems={bookmarkItems}
+          bookmarkGroup={groups.all.find(g => g.bookmarks) || null}
+        />
+      )}
     </>
   )
 }

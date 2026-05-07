@@ -140,7 +140,7 @@ async function processItem(data, dayKey, itemKey, res) {
           .next(data.url)
           .next(dayKey)
           .next(data.guid)
-          .put(data, cb)
+          .put(JSON.stringify(data), cb)
       }, `save-item-${data.url}`),
       timeDbOperation(cb => {
         const remove = {

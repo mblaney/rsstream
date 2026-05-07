@@ -3,7 +3,6 @@ import {
   bbcFavicon,
   tcFavicon,
   wiredFavicon,
-  espnFavicon,
   cbsFavicon,
 } from "../images/favicons.js"
 
@@ -39,14 +38,6 @@ export const defaultFeeds = [
     language: "en-US",
     image: wiredFavicon,
     defaultGroup: "Tech",
-  },
-  {
-    key: "https://www.espn.com/espn/rss/news",
-    title: "www.espn.com - TOP",
-    html_url: "https://www.espn.com",
-    language: "en",
-    image: espnFavicon,
-    defaultGroup: "Sport",
   },
   {
     key: "https://www.cbssports.com/rss/headlines",

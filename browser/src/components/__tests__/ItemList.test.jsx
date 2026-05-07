@@ -31,7 +31,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -52,7 +51,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -73,7 +71,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -89,7 +86,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={null}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -114,49 +110,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
-        setMessage={mockSetMessage}
-        requestMoreHistory={mockRequestMoreHistory}
-        historyDayLoaded={0}
-        maxHistoryReached={false}
-      />,
-    )
-
-    expect(container).toBeTruthy()
-  })
-
-  it("should handle empty newItems array", () => {
-    const group = {
-      key: "test-group",
-      feeds: ["https://example.com/feed"],
-    }
-
-    const {container} = render(
-      <ItemList
-        group={group}
-        feeds={mockFeeds}
-        newItems={[]}
-        setMessage={mockSetMessage}
-        requestMoreHistory={mockRequestMoreHistory}
-        historyDayLoaded={0}
-        maxHistoryReached={false}
-      />,
-    )
-
-    expect(container).toBeTruthy()
-  })
-
-  it("should handle newItems as null", () => {
-    const group = {
-      key: "test-group",
-      feeds: ["https://example.com/feed"],
-    }
-
-    const {container} = render(
-      <ItemList
-        group={group}
-        feeds={mockFeeds}
-        newItems={null}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -202,7 +155,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -228,7 +180,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group1}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -240,7 +191,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group2}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -261,7 +211,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -282,7 +231,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -294,7 +242,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -315,7 +262,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -327,7 +273,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={null}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -348,7 +293,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={null}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -360,7 +304,6 @@ describe("ItemList Component", () => {
       <ItemList
         group={group}
         feeds={mockFeeds}
-        newItems={[]}
         setMessage={mockSetMessage}
         requestMoreHistory={mockRequestMoreHistory}
         historyDayLoaded={0}
@@ -408,7 +351,6 @@ describe("ItemList Component", () => {
         <ItemList
           group={group}
           feeds={mockFeeds}
-          newItems={[]}
           setMessage={mockSetMessage}
           requestMoreHistory={mockRequestMoreHistory}
           historyDayLoaded={0}
@@ -433,7 +375,6 @@ describe("ItemList Component", () => {
         <ItemList
           group={group}
           feeds={mockFeeds}
-          newItems={[]}
           setMessage={mockSetMessage}
           requestMoreHistory={mockRequestMoreHistory}
           historyDayLoaded={0}
@@ -455,7 +396,6 @@ describe("ItemList Component", () => {
           <ItemList
             group={group}
             feeds={mockFeeds}
-            newItems={[]}
             setMessage={mockSetMessage}
             requestMoreHistory={mockRequestMoreHistory}
             historyDayLoaded={1}
@@ -507,7 +447,6 @@ describe("ItemList Component", () => {
         <ItemList
           group={group}
           feeds={mockFeeds}
-          newItems={[]}
           setMessage={mockSetMessage}
           requestMoreHistory={mockRequestMoreHistory}
           historyDayLoaded={0}
@@ -529,7 +468,6 @@ describe("ItemList Component", () => {
           <ItemList
             group={group}
             feeds={feedsWithYesterday}
-            newItems={[]}
             setMessage={mockSetMessage}
             requestMoreHistory={mockRequestMoreHistory}
             historyDayLoaded={1}
@@ -554,7 +492,6 @@ describe("ItemList Component", () => {
         <ItemList
           group={group}
           feeds={mockFeeds}
-          newItems={[]}
           setMessage={mockSetMessage}
           requestMoreHistory={mockRequestMoreHistory}
           historyDayLoaded={0}
@@ -573,7 +510,6 @@ describe("ItemList Component", () => {
           <ItemList
             group={group}
             feeds={mockFeeds}
-            newItems={[]}
             setMessage={mockSetMessage}
             requestMoreHistory={mockRequestMoreHistory}
             historyDayLoaded={1}

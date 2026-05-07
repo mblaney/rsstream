@@ -100,8 +100,8 @@ describe("EditGroup Component", () => {
       <EditGroup
         user={user}
         code="test-code"
-        groups={{all: [{key: "My Group", feeds: []}]}}
-        currentGroup="My Group"
+        groups={{all: [{key: "some-soul-id", name: "My Group", feeds: []}]}}
+        currentGroup="some-soul-id"
         showGroupList={mockShowGroupList}
       />,
     )

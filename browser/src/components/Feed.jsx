@@ -84,12 +84,12 @@ const Feed = ({
     // from that group, otherwise removing the feed for the user.
     if (currentGroup) {
       const group = groups.all.find(g => g.key === currentGroup)
-      if (group && group.feeds.includes(feed.key)) {
+      if (group && (group.feeds || []).includes(feed.key)) {
         return (
           <IconButton
             edge="end"
             aria-label="delete"
-            onClick={() => updateGroupFeeds(group.feeds, feed.key)}
+            onClick={() => updateGroupFeeds(group.feeds || [], feed.key)}
           >
             <DeleteIcon />
           </IconButton>
@@ -100,7 +100,9 @@ const Feed = ({
       return
     }
 
-    const count = groups.all.filter(g => g.feeds.includes(feed.key)).length
+    const count = groups.all.filter(g =>
+      (g.feeds || []).includes(feed.key),
+    ).length
     if (!feed.defaultGroup && count === 0) {
       return (
         <IconButton
