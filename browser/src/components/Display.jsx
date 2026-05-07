@@ -355,7 +355,7 @@ const Display = ({
           groupsLoaded={groupsLoaded}
           groupsUpdating={groupsUpdating}
           setGroup={showGroup}
-          hasBookmarks={Object.keys(bookmarkItems).length > 0}
+          hasBookmarks={Object.keys(bookmarkItems || {}).length > 0}
         />
       )}
       {currentGroup && (
