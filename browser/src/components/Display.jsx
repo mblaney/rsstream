@@ -2,6 +2,7 @@ import {useCallback, useEffect, useReducer, useRef, useState} from "react"
 import Box from "@mui/material/Box"
 import Typography from "@mui/material/Typography"
 import {init, reducer} from "../utils/reducer.js"
+import {decodeEntities} from "../utils/format.js"
 import {logEvent} from "../utils/debugEvents"
 import AddFeed from "./AddFeed"
 import EditGroup from "./EditGroup"
@@ -17,6 +18,7 @@ const Display = ({
   mode,
   setMode,
   feeds,
+  feedsLoaded,
   debugMode,
   requestMoreHistory,
   historyDayLoaded,
@@ -30,6 +32,10 @@ const Display = ({
   const [group, setGroup] = useState(null)
   const [currentGroup, setCurrentGroup] = useState("")
   const [message, setMessage] = useState("")
+  const [searchQuery, setSearchQuery] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get("search") || ""
+  })
   const [feedList, setFeedList] = useState(false)
   const [addFeed, setAddFeed] = useState(false)
   const [groupsLoaded, setGroupsLoaded] = useState(false)
@@ -74,6 +80,7 @@ const Display = ({
 
   const showGroup = g => {
     setGroup(g)
+    setSearchQuery("")
     window.history.pushState(null, "")
   }
 
@@ -101,10 +108,23 @@ const Display = ({
       setAddFeed(false)
       setMessage("")
       setGroup(null)
+      setSearchQuery("")
       window.scrollTo(0, 0)
     },
     [user],
   )
+
+  useEffect(() => {
+    if (searchQuery) {
+      window.history.replaceState(
+        null,
+        "",
+        `/?search=${encodeURIComponent(searchQuery)}`,
+      )
+    } else {
+      window.history.replaceState(null, "", window.location.pathname)
+    }
+  }, [searchQuery])
 
   // The above functions are all display modes of this component and avoid
   // rendering so that the item list doesn't need re-mapping which is slow.
@@ -148,6 +168,8 @@ const Display = ({
 
   // Detect new items and update group stats whenever feeds or groups change.
   const checkForNewItems = useCallback(() => {
+    if (!feedsLoaded) return
+
     const feeds = feedsRef.current
     const groups = groupsRef.current
 
@@ -172,11 +194,13 @@ const Display = ({
             if (item.timestamp <= groupLastCheck) continue
 
             const tag = /(<([^>]+)>)/g
-            const text = item.title
-              ? item.title.replace(tag, "")
-              : item.content
-                ? item.content.replace(tag, "")
-                : ""
+            const text = decodeEntities(
+              item.title
+                ? item.title.replace(tag, "")
+                : item.content
+                  ? item.content.replace(tag, "")
+                  : "",
+            )
 
             // Only overwrite stats for this group if this item is more recent.
             const current = statsRef.current.get(g.key)
@@ -217,7 +241,7 @@ const Display = ({
       setGroupStats(statsRef.current)
       statsRef.current = new Map()
     }
-  }, [setGroupStats, updateGroup])
+  }, [feedsLoaded, setGroupStats, updateGroup])
 
   // Re-run stats check whenever feeds or groups change.
   useEffect(() => {
@@ -231,6 +255,13 @@ const Display = ({
       resetGroup(group.key)
     }
   }, [group, resetGroup])
+
+  // Return to group list when the last bookmark is removed
+  useEffect(() => {
+    if (group?.bookmarks && Object.keys(bookmarkItems || {}).length === 0) {
+      showGroupList()
+    }
+  }, [bookmarkItems, group, showGroupList])
 
   // Initial effect to set up the existing groups for the user.
   useEffect(() => {
@@ -266,6 +297,7 @@ const Display = ({
       if (g.name !== undefined) groupUpdate.name = g.name
       if (g.bookmarks !== undefined) groupUpdate.bookmarks = g.bookmarks
       if (g.count !== undefined) groupUpdate.count = g.count
+      if (g.showCount !== undefined) groupUpdate.showCount = g.showCount
 
       // Don't revert latest/timestamp to older values — Holster may fire the
       // on handler with stale data (e.g. a resetGroup write delivering old
@@ -343,17 +375,25 @@ const Display = ({
           createGroup={createGroup}
           editGroup={editGroup}
           createFeed={createFeed}
+          onSearch={setSearchQuery}
+          searchQuery={searchQuery}
           mode={mode}
           setMode={setMode}
-          title={group ? group.name || "Untitled" : ""}
+          groupsUpdating={groupsUpdating}
+          title={
+            group
+              ? group.name || "Untitled"
+              : searchQuery
+                ? "Search results"
+                : ""
+          }
           groupId={group ? group.key : ""}
         />
       )}
-      {groupList && !group && (
+      {groupList && !group && !searchQuery && (
         <GroupList
           groups={groups}
           groupsLoaded={groupsLoaded}
-          groupsUpdating={groupsUpdating}
           setGroup={showGroup}
           hasBookmarks={Object.keys(bookmarkItems || {}).length > 0}
         />
@@ -394,6 +434,7 @@ const Display = ({
           user={user}
           bookmarkItems={bookmarkItems}
           bookmarkGroup={groups.all.find(g => g.bookmarks) || null}
+          searchQuery={searchQuery}
         />
       )}
     </>

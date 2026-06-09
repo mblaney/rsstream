@@ -27,11 +27,13 @@ if (window.location.hostname !== "localhost") {
 const holster = Holster({peers: peers, secure: true, indexedDB: true})
 
 function deserializeDayItems(dayItems) {
+  if (!dayItems) return null
   const result = {}
   for (const [key, value] of Object.entries(dayItems)) {
+    if (key === "_empty") continue
     result[key] = typeof value === "string" ? JSON.parse(value) : value
   }
-  return result
+  return Object.keys(result).length > 0 ? result : null
 }
 // This provides access to the API via the console.
 window.holster = holster
@@ -325,7 +327,7 @@ const App = () => {
               ...f[url],
               url: hostFeed.html_url,
               title: hostFeed.title,
-              image: hostFeed.image,
+              ...(hostFeed.image && {image: hostFeed.image}),
               description: hostFeed.description ?? "",
               language: hostFeed.language ?? "",
             },
@@ -527,12 +529,13 @@ const App = () => {
       .get([host, "feedItems"])
       .next(currentUrl)
       .next(dayToFetch, dayItems => {
+        const items = deserializeDayItems(dayItems)
         logEvent("BG_RESPONSE", {
           url: currentUrl,
           day: new Date(dayToFetch).toDateString(),
-          items: dayItems ? Object.keys(dayItems).length : null,
+          items: items ? Object.keys(items).length : null,
         })
-        if (dayItems) {
+        if (items) {
           setFeeds(f => {
             const currentFeed = f[currentUrl] || {url: "", title: "", image: ""}
             return {
@@ -541,7 +544,7 @@ const App = () => {
                 ...currentFeed,
                 items: {
                   ...(currentFeed.items || {}),
-                  [dayToFetch]: deserializeDayItems(dayItems),
+                  [dayToFetch]: items,
                 },
               },
             }
@@ -676,7 +679,8 @@ const App = () => {
           .get([host, "feedItems"])
           .next(url)
           .next(dayKey, dayItems => {
-            if (!dayItems) return
+            const items = deserializeDayItems(dayItems)
+            if (!items) return
 
             setFeeds(f => {
               const currentFeed = f[url] || {url: "", title: "", image: ""}
@@ -686,7 +690,7 @@ const App = () => {
                   ...currentFeed,
                   items: {
                     ...(currentFeed.items || {}),
-                    [dayKey]: deserializeDayItems(dayItems),
+                    [dayKey]: items,
                   },
                 },
               }
@@ -803,6 +807,7 @@ const App = () => {
                     mode={mode}
                     setMode={setMode}
                     feeds={feeds}
+                    feedsLoaded={feedsLoaded}
                     debugMode={debugMode}
                     requestMoreHistory={requestMoreHistory}
                     historyDayLoaded={historyDayLoaded}

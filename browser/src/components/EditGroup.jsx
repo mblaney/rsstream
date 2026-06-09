@@ -3,8 +3,10 @@ import Button from "@mui/material/Button"
 import Card from "@mui/material/Card"
 import CardContent from "@mui/material/CardContent"
 import Container from "@mui/material/Container"
+import FormControlLabel from "@mui/material/FormControlLabel"
 import Grid from "@mui/material/Grid"
 import List from "@mui/material/List"
+import Switch from "@mui/material/Switch"
 import TextField from "@mui/material/TextField"
 import Typography from "@mui/material/Typography"
 import {init, reducer} from "../utils/reducer.js"
@@ -25,6 +27,10 @@ const EditGroup = ({
   const [groupName, setGroupName] = useState(() => {
     const g = groups.all.find(gr => gr.key === currentGroup)
     return g?.name || ""
+  })
+  const [showCount, setShowCount] = useState(() => {
+    const g = groups.all.find(gr => gr.key === currentGroup)
+    return g?.showCount !== false
   })
   const [selected, setSelected] = useState([])
   const [message, setMessage] = useState("")
@@ -92,6 +98,7 @@ const EditGroup = ({
     if (group.bookmarks) {
       data = {
         name: groupName,
+        showCount,
         bookmarks: true,
         count: group.count || 0,
         latest: group.latest || 0,
@@ -117,6 +124,7 @@ const EditGroup = ({
       }
       data = {
         name: groupName,
+        showCount,
         feeds: f,
         count: 0,
         latest: 0,
@@ -147,7 +155,9 @@ const EditGroup = ({
         <Grid item xs={12}>
           <Card sx={{mt: 2}}>
             <CardContent>
-              <Typography variant="h5">Edit group</Typography>
+              <Typography variant="h5">
+                {group.bookmarks ? "Edit bookmark group" : "Edit group"}
+              </Typography>
               <TextField
                 id="editgroup-name"
                 label="Group name"
@@ -157,6 +167,18 @@ const EditGroup = ({
                 value={groupName}
                 onChange={event => setGroupName(event.target.value)}
               />
+              {!group.bookmarks && (
+                <FormControlLabel
+                  sx={{display: "block", mt: 1}}
+                  control={
+                    <Switch
+                      checked={showCount}
+                      onChange={e => setShowCount(e.target.checked)}
+                    />
+                  }
+                  label="Show unread count"
+                />
+              )}
               <Button
                 sx={{mt: 1}}
                 variant="contained"

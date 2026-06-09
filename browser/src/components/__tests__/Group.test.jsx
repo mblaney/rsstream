@@ -138,6 +138,39 @@ describe("Group Component", () => {
     expect(countAvatars.length).toBe(1)
   })
 
+  it("should not display count when showCount is false", () => {
+    const group = {
+      key: "test-group",
+      feeds: [],
+      timestamp: Date.now(),
+      author: "Test Author",
+      text: "Test content",
+      count: 5,
+      showCount: false,
+    }
+
+    const {container} = render(<Group group={group} setGroup={mockSetGroup} />)
+
+    const countAvatars = container.querySelectorAll(".MuiAvatar-root")
+    expect(countAvatars.length).toBe(1)
+  })
+
+  it("should display count when showCount is true", () => {
+    const group = {
+      key: "test-group",
+      feeds: [],
+      timestamp: Date.now(),
+      author: "Test Author",
+      text: "Test content",
+      count: 5,
+      showCount: true,
+    }
+
+    const {container} = render(<Group group={group} setGroup={mockSetGroup} />)
+
+    expect(container.textContent).toContain("5")
+  })
+
   it("should render avatar with group icon for multiple feeds", () => {
     const group = {
       key: "test-group",

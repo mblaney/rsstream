@@ -9,6 +9,7 @@ import BookmarkIcon from "@mui/icons-material/Bookmark"
 import PersonIcon from "@mui/icons-material/Person"
 import GroupIcon from "@mui/icons-material/Group"
 import {formatDate} from "../utils/format.js"
+import {toColor} from "../utils/avatar.js"
 
 const Group = ({group, setGroup}) => {
   return (
@@ -23,7 +24,7 @@ const Group = ({group, setGroup}) => {
           {group.image ? (
             <Avatar alt={`Avatar for ${group.name}`} src={group.image} />
           ) : (
-            <Avatar>
+            <Avatar sx={theme => ({bgcolor: toColor(group.key, theme)})}>
               {group.bookmarks ? (
                 <BookmarkIcon />
               ) : group.feeds && group.feeds.length > 1 ? (
@@ -50,9 +51,9 @@ const Group = ({group, setGroup}) => {
           secondary={
             <Typography component="div" sx={{display: "flex"}}>
               <span style={{flexGrow: 1}}>
-                {`${group.author ? `${group.author}: ` : ""}${group.text || ""}`}
+                {`${group.author ? `${group.author.replace(/^https?:\/\//, "")}: ` : ""}${group.text || ""}`}
               </span>
-              {group.count > 0 && (
+              {group.showCount !== false && group.count > 0 && (
                 <Avatar
                   sx={theme => ({
                     width: 30,

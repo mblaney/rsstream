@@ -173,4 +173,31 @@ describe("FeedList Component", () => {
       {timeout: 2000},
     )
   })
+
+  it("should render show unread count toggle", () => {
+    render(
+      <FeedList
+        user={user}
+        code="test-code"
+        groups={{all: []}}
+        showGroupList={mockShowGroupList}
+      />,
+    )
+
+    expect(screen.getByLabelText(/show unread count/i)).toBeTruthy()
+  })
+
+  it("should default show unread count toggle to checked", () => {
+    render(
+      <FeedList
+        user={user}
+        code="test-code"
+        groups={{all: []}}
+        showGroupList={mockShowGroupList}
+      />,
+    )
+
+    const toggle = screen.getByLabelText(/show unread count/i)
+    expect(toggle.checked).toBe(true)
+  })
 })

@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react"
+import {useCallback, useEffect, useState} from "react"
 import {grey} from "@mui/material/colors"
 import Button from "@mui/material/Button"
 import Card from "@mui/material/Card"
@@ -10,6 +10,7 @@ import Grid from "@mui/material/Grid"
 import IconButton from "@mui/material/IconButton"
 import InputAdornment from "@mui/material/InputAdornment"
 import InputLabel from "@mui/material/InputLabel"
+import Link from "@mui/material/Link"
 import List from "@mui/material/List"
 import ListItem from "@mui/material/ListItem"
 import OutlinedInput from "@mui/material/OutlinedInput"
@@ -18,6 +19,7 @@ import ContentCopy from "@mui/icons-material/ContentCopy"
 import Visibility from "@mui/icons-material/Visibility"
 import VisibilityOff from "@mui/icons-material/VisibilityOff"
 import {buildDate} from "../utils/buildDate.js"
+import EditCache from "./EditCache"
 import SearchAppBar from "./SearchAppBar"
 
 const Settings = ({user, host, code, mode, setMode}) => {
@@ -25,12 +27,14 @@ const Settings = ({user, host, code, mode, setMode}) => {
     return sessionStorage.getItem("name") || localStorage.getItem("name") || ""
   })
   const [invites, setInvites] = useState([])
+  const [account, setAccount] = useState(null)
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [newPassword, setNewPassword] = useState("")
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [message, setMessage] = useState("")
   const [disabledButton, setDisabledButton] = useState(false)
+  const [cacheData, setCacheData] = useState(null)
 
   useEffect(() => {
     if (!user || !host || !code) return
@@ -74,6 +78,63 @@ const Settings = ({user, host, code, mode, setMode}) => {
       user.get([host, "shared"]).next("invite_codes").next(code).off(update)
     }
   }, [user, host, code])
+
+  useEffect(() => {
+    if (!user || !host || !code) return
+
+    const updateAccount = acc => {
+      if (acc) setAccount(acc)
+    }
+
+    user.get([host, "accounts"]).next(code).on(updateAccount, true)
+
+    return () => {
+      user.get([host, "accounts"]).next(code).off(updateAccount)
+    }
+  }, [user, host, code])
+
+  const loadCacheData = useCallback(async () => {
+    if (!("caches" in window)) return
+
+    const loadCache = async name => {
+      if (!(await caches.has(name))) return {count: 0, size: 0, items: []}
+      const cache = await caches.open(name)
+      const keys = await cache.keys()
+      let totalSize = 0
+      const items = []
+      for (const request of keys) {
+        const response = await cache.match(request)
+        const cl = response?.headers.get("content-length")
+        const size = cl ? parseInt(cl, 10) : 0
+        const name = response?.headers.get("x-cache-name") || null
+        totalSize += size
+        items.push({url: request.url, size, name})
+      }
+      items.sort((a, b) => b.size - a.size)
+      return {count: keys.length, size: totalSize, items}
+    }
+
+    const [audio, video] = await Promise.all([
+      loadCache("audio"),
+      loadCache("video"),
+    ])
+    setCacheData({audio, video})
+  }, [])
+
+  useEffect(() => {
+    loadCacheData()
+  }, [loadCacheData])
+
+  const removeItem = async (cacheName, url) => {
+    const cache = await caches.open(cacheName)
+    await cache.delete(url)
+    loadCacheData()
+  }
+
+  const clearCache = async cacheName => {
+    await caches.delete(cacheName)
+    loadCacheData()
+  }
 
   const select = target => {
     const li = target.closest("li")
@@ -123,35 +184,63 @@ const Settings = ({user, host, code, mode, setMode}) => {
                     ? "Hello " + name
                     : "Account not found. Please try logging in again."}
                 </Typography>
-                {invites.length !== 0 && (
+                {invites.length > 0 && (
+                  <>
+                    <Typography sx={{m: 1}}>
+                      You have <strong>{invites.length}</strong> invite code
+                      {invites.length > 1 ? "s" : ""} you can share
+                    </Typography>
+                    <List dense={true} sx={{maxHeight: 300, overflow: "auto"}}>
+                      {invites.map(invite => (
+                        <ListItem key={invite.key}>
+                          <FilledInput
+                            defaultValue={invite.code}
+                            readOnly={true}
+                            endAdornment={
+                              <InputAdornment position="end">
+                                <IconButton
+                                  edge="end"
+                                  aria-label="copy invite code"
+                                  onClick={event => select(event.target)}
+                                >
+                                  <ContentCopy />
+                                </IconButton>
+                              </InputAdornment>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </>
+                )}
+                {account && account.feeds && (
                   <Typography sx={{m: 1}}>
-                    You have {invites.length} invite code
-                    {invites.length > 1 && "s"} you can share
+                    {(account.subscribed ?? 0) >= account.feeds ? (
+                      "No more feeds can be subscribed to"
+                    ) : (
+                      <>
+                        <strong>
+                          {account.feeds - (account.subscribed ?? 0)}/
+                          {account.feeds}
+                        </strong>{" "}
+                        feeds can be subscribed to
+                      </>
+                    )}
                   </Typography>
                 )}
-                <List dense={true} sx={{maxHeight: 300, overflow: "auto"}}>
-                  {invites.map(invite => (
-                    <ListItem key={invite.key}>
-                      <FilledInput
-                        defaultValue={invite.code}
-                        readOnly={true}
-                        endAdornment={
-                          <InputAdornment position="end">
-                            <IconButton
-                              edge="end"
-                              aria-label="copy invite code"
-                              onClick={event => select(event.target)}
-                            >
-                              <ContentCopy />
-                            </IconButton>
-                          </InputAdornment>
-                        }
-                      />
-                    </ListItem>
-                  ))}
-                </List>
+                <Typography sx={{m: 1}}>
+                  <Link href="https://github.com/sponsors/mblaney">
+                    Sponsor the project
+                  </Link>{" "}
+                  to add invite codes and feeds
+                </Typography>
               </CardContent>
             </Card>
+            <EditCache
+              cacheData={cacheData}
+              removeItem={removeItem}
+              clearCache={clearCache}
+            />
             <Card sx={{mt: 2}}>
               <CardContent>
                 <Typography sx={{m: 1}}>

@@ -299,6 +299,7 @@ user.auth(username, password, async err => {
     mapInviteCodes()
     // Load hash cache from disk to avoid reprocessing items on restart
     await loadHashCache()
+    scheduleDailySentinelJob()
   }
 })
 
@@ -849,7 +850,7 @@ app.post("/add-feed", async (req, res) => {
 
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
     let add
     try {
       add = await fetch(addFeedUrl, {
@@ -860,6 +861,14 @@ app.post("/add-feed", async (req, res) => {
         body: `id=${addFeedID}&key=${addFeedApiKey}&action=add-feed&xmlUrl=${encodeURIComponent(url)}`,
         signal: controller.signal,
       })
+    } catch (err) {
+      clearTimeout(timeoutId)
+      if (err.name === "AbortError") {
+        console.log("Timeout adding feed", url)
+        res.status(503).send({error: "Feed request timed out, please try again"})
+        return
+      }
+      throw err
     } finally {
       clearTimeout(timeoutId)
     }
@@ -873,14 +882,14 @@ app.post("/add-feed", async (req, res) => {
     if (feed.error) {
       console.log("Error from", addFeedUrl, url)
       console.log(feed.error)
-      res.status(500).send({error: "Error adding feed"})
+      res.status(400).send({error: feed.error})
       return
     }
 
     if (!feed.add || !feed.add.url || !feed.add.title) {
       console.log("No feed data from", addFeedUrl, url)
       console.log(feed)
-      res.status(500).send({error: "Error adding feed"})
+      res.status(400).send({error: "A feed wasn't found at this address"})
       return
     }
 
@@ -1557,6 +1566,38 @@ function mapInviteCodes() {
 function day(key) {
   const t = new Date(+key)
   return Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())
+}
+
+// Write a sentinel value for each feed that has no items on a given day.
+// Clients receiving the sentinel can return immediately from local store on
+// future requests for that day, avoiding a network round-trip for empty days.
+// If real items later arrive for the day, they are stored alongside the
+// sentinel via HAM and clients will see them on their next session.
+async function writeSentinelsForDay(dayKey) {
+  const feedsNode = await new Promise(res => user.get("feeds", res))
+  if (!feedsNode) return
+  const feedUrls = Object.keys(feedsNode).filter(k => k !== "_")
+  for (const url of feedUrls) {
+    const existing = await new Promise(res =>
+      user.get("feedItems").next(url).next(dayKey, res),
+    )
+    if (!existing) {
+      await new Promise(res =>
+        user.get("feedItems").next(url).next(dayKey).put({_empty: true}, res),
+      )
+    }
+  }
+}
+
+// Runs at midnight UTC each day for the day that just completed, naturally
+// covering the 14-day history window over time.
+function scheduleDailySentinelJob() {
+  const now = Date.now()
+  const nextMidnight = day(now) + 86400000
+  setTimeout(async () => {
+    await writeSentinelsForDay(day(Date.now()) - 86400000)
+    scheduleDailySentinelJob()
+  }, nextMidnight - now)
 }
 
 async function checkCodes(newCodes) {

@@ -1,10 +1,11 @@
-import {useRef, useState} from "react"
+import {useEffect, useRef, useState} from "react"
 import {styled, alpha, useTheme} from "@mui/material/styles"
 import useMediaQuery from "@mui/material/useMediaQuery"
 import {red} from "@mui/material/colors"
 import AppBar from "@mui/material/AppBar"
 import Box from "@mui/material/Box"
 import Button from "@mui/material/Button"
+import CircularProgress from "@mui/material/CircularProgress"
 import IconButton from "@mui/material/IconButton"
 import InputBase from "@mui/material/InputBase"
 import MenuItem from "@mui/material/MenuItem"
@@ -80,8 +81,11 @@ const SearchAppBar = ({
   createGroup,
   editGroup,
   createFeed,
+  onSearch,
+  searchQuery,
   mode,
   setMode,
+  groupsUpdating,
   title,
   groupId,
 }) => {
@@ -89,6 +93,11 @@ const SearchAppBar = ({
   const isSmall = useMediaQuery(theme.breakpoints.down("sm"))
   const collapsed = !!title && isSmall
   const searchInputRef = useRef(null)
+  const [searchValue, setSearchValue] = useState(searchQuery || "")
+
+  useEffect(() => {
+    if (!searchQuery) setSearchValue("")
+  }, [searchQuery])
   const [anchorEl, setAnchorEl] = useState(null)
   const [mobileMoreAnchorEl, setMobileMoreAnchorEl] = useState(null)
 
@@ -244,11 +253,20 @@ const SearchAppBar = ({
             aria-label="home"
             onClick={home}
           >
-            <RssFeedIcon
-              sx={theme => ({
-                ...theme.applyStyles("dark", {color: red[900]}),
-              })}
-            />
+            {groupsUpdating ? (
+              <CircularProgress
+                size={28}
+                sx={theme => ({
+                  ...theme.applyStyles("dark", {color: red[900]}),
+                })}
+              />
+            ) : (
+              <RssFeedIcon
+                sx={theme => ({
+                  ...theme.applyStyles("dark", {color: red[900]}),
+                })}
+              />
+            )}
           </IconButton>
           {title ? (
             <Button
@@ -288,6 +306,26 @@ const SearchAppBar = ({
               inputRef={searchInputRef}
               placeholder="Search…"
               inputProps={{"aria-label": "search"}}
+              value={searchValue}
+              onChange={e => setSearchValue(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  const trimmed = searchValue.trim()
+                  if (trimmed.length >= 3) {
+                    setSearchValue(trimmed)
+                    if (onSearch) {
+                      onSearch(trimmed)
+                    } else {
+                      window.location = `/?search=${encodeURIComponent(trimmed)}`
+                    }
+                    searchInputRef.current?.blur()
+                  }
+                } else if (e.key === "Escape") {
+                  setSearchValue("")
+                  if (onSearch) onSearch("")
+                  searchInputRef.current?.blur()
+                }
+              }}
             />
           </Search>
           <Box sx={{display: {xs: "none", md: "flex"}}}>

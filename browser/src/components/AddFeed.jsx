@@ -164,7 +164,12 @@ const AddFeed = ({user, host, code, debugMode}) => {
       })
       if (!res.ok) {
         if (!calledFromList) setDisabledButton(false)
-        setMessage("Error adding feed")
+        try {
+          const json = await res.json()
+          setMessage(json.error || "Error adding feed")
+        } catch {
+          setMessage("Error adding feed")
+        }
         console.error(res)
         return false
       }

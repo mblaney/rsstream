@@ -1,3 +1,13 @@
+export const decodeEntities = str =>
+  str
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+
 // TODO: Add locale support.
 const formatter = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",

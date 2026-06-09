@@ -3,8 +3,10 @@ import Button from "@mui/material/Button"
 import Card from "@mui/material/Card"
 import CardContent from "@mui/material/CardContent"
 import Container from "@mui/material/Container"
+import FormControlLabel from "@mui/material/FormControlLabel"
 import Grid from "@mui/material/Grid"
 import List from "@mui/material/List"
+import Switch from "@mui/material/Switch"
 import TextField from "@mui/material/TextField"
 import Typography from "@mui/material/Typography"
 import {init, reducer} from "../utils/reducer.js"
@@ -14,6 +16,7 @@ import Feed from "./Feed"
 // TODO: Display a filtered list using the search bar.
 const FeedList = ({user, code, groups, showGroupList, appFeeds}) => {
   const [groupName, setGroupName] = useState("")
+  const [showCount, setShowCount] = useState(true)
   const [selected, setSelected] = useState([])
   const [message, setMessage] = useState("")
   const [disabledButton, setDisabledButton] = useState(false)
@@ -115,6 +118,7 @@ const FeedList = ({user, code, groups, showGroupList, appFeeds}) => {
     }
     const group = {
       name: groupName,
+      showCount,
       feeds: f,
       count: 0,
       latest: Date.now(),
@@ -152,6 +156,16 @@ const FeedList = ({user, code, groups, showGroupList, appFeeds}) => {
                 margin="normal"
                 value={groupName}
                 onChange={event => setGroupName(event.target.value)}
+              />
+              <FormControlLabel
+                sx={{display: "block", mt: 1}}
+                control={
+                  <Switch
+                    checked={showCount}
+                    onChange={e => setShowCount(e.target.checked)}
+                  />
+                }
+                label="Show unread count"
               />
               <Button
                 sx={{mt: 1}}

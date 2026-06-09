@@ -5,6 +5,7 @@ import Container from "@mui/material/Container"
 import Grid from "@mui/material/Grid"
 import {init, reducer} from "../utils/reducer.js"
 import {getGroupItems} from "../utils/getGroupItems.js"
+import {searchItems} from "../utils/searchItems.js"
 import {logEvent} from "../utils/debugEvents"
 import Item from "./Item"
 
@@ -18,6 +19,7 @@ const ItemList = ({
   maxHistoryReached,
   bookmarkItems,
   bookmarkGroup,
+  searchQuery,
 }) => {
   const sort = (a, b) => a.timestamp - b.timestamp
   const [items, updateItem] = useReducer(reducer(sort), init)
@@ -36,6 +38,7 @@ const ItemList = ({
   const needsMoreItemsRef = useRef(false)
   const isMountedRef = useRef(true)
   const maxHistoryReachedRef = useRef(maxHistoryReached)
+  const wasSearchActiveRef = useRef(false)
 
   // Cleanup mounted flag on unmount
   useEffect(() => {
@@ -139,12 +142,14 @@ const ItemList = ({
         requestMoreHistory()
 
         // Get next batch of older items
-        const olderItems = getGroupItems(
-          group,
-          feedsRef.current,
-          oldestTimestampRef.current,
-          10,
-        )
+        const olderItems = searchQuery
+          ? []
+          : getGroupItems(
+              group,
+              feedsRef.current,
+              oldestTimestampRef.current,
+              10,
+            )
         logEvent("LOAD_MORE", {
           found: olderItems.length,
           oldestTimestamp: oldestTimestampRef.current,
@@ -164,7 +169,7 @@ const ItemList = ({
         } else if (isMountedRef.current) {
           if (maxHistoryReachedRef.current) {
             setLoading(false)
-            setMessage("No more items available for this group.")
+            setMessage("No more items available")
           } else {
             setLoading(true)
             needsMoreItemsRef.current = true
@@ -173,7 +178,8 @@ const ItemList = ({
       }
     })
 
-    // Observe the first few oldest items (at the top) so scrolling up triggers loading more.
+    // Observe the first few oldest items (at the top) so scrolling up triggers
+    // loading more.
     let aim = 0
     const observed = []
     for (let i = 0; i < itemsRef.current.all.length; i++) {
@@ -181,17 +187,54 @@ const ItemList = ({
       if (target) {
         watchStart.current.observe(target)
         observed.push(itemsRef.current.all[i].key)
-        if (aim++ === 3) break
+        if (aim++ === 7) break
       }
     }
     logEvent("OBSERVER_SETUP", {observing: observed.length, keys: observed})
-  }, [group, renderItems, setMessage, isMountedRef, requestMoreHistory])
+  }, [
+    group,
+    searchQuery,
+    renderItems,
+    setMessage,
+    isMountedRef,
+    requestMoreHistory,
+  ])
 
   // When a historical day finishes loading, check for new items. If the
   // observer was stuck waiting (needsMoreItemsRef), render and reset it, or
   // cascade to the next day if this day had nothing for the current group.
   useEffect(() => {
-    if (!historyDayLoaded || !group || !needsMoreItemsRef.current) return
+    if (!historyDayLoaded || !needsMoreItemsRef.current) return
+
+    if (searchQuery) {
+      const feedUrls = group?.feeds || null
+      const allResults = searchItems(searchQuery, feedsRef.current, feedUrls)
+      const newResults = allResults.filter(
+        r => !itemsRef.current.keys.includes(r.key),
+      )
+
+      if (newResults.length > 0) {
+        needsMoreItemsRef.current = false
+        setLoading(false)
+        renderItems(newResults)
+        setTimeout(() => {
+          if (isMountedRef.current) setupLoadMoreObserver()
+        }, 500)
+      } else if (maxHistoryReached) {
+        needsMoreItemsRef.current = false
+        setLoading(false)
+        setMessage(
+          itemsRef.current.all.length === 0
+            ? "No results found."
+            : "No more items available",
+        )
+      } else {
+        requestMoreHistory()
+      }
+      return
+    }
+
+    if (!group) return
 
     const olderItems = getGroupItems(
       group,
@@ -219,13 +262,14 @@ const ItemList = ({
     } else if (maxHistoryReached) {
       needsMoreItemsRef.current = false
       setLoading(false)
-      setMessage("No more items available for this group.")
+      setMessage("No more items available")
     } else {
       requestMoreHistory()
     }
   }, [
     historyDayLoaded,
     group,
+    searchQuery,
     renderItems,
     setupLoadMoreObserver,
     requestMoreHistory,
@@ -233,8 +277,71 @@ const ItemList = ({
     setMessage,
   ])
 
+  // Search mode: scan in-memory feed data then auto-load history for more
+  // matches. Declared before the group-change effect so the clear path sets
+  // groupKeyRef="" before group-change runs, allowing it to reload the group.
+  useEffect(() => {
+    if (!searchQuery) {
+      if (wasSearchActiveRef.current) {
+        wasSearchActiveRef.current = false
+        updateItem({reset: true})
+        oldestTimestampRef.current = Date.now()
+        needsMoreItemsRef.current = false
+        groupKeyRef.current = ""
+        if (isMountedRef.current) {
+          setLoading(false)
+          setMessage("")
+        }
+      }
+      return
+    }
+
+    wasSearchActiveRef.current = true
+    updateItem({reset: true})
+    oldestTimestampRef.current = Date.now()
+    needsMoreItemsRef.current = false
+    groupKeyRef.current = ""
+    if (isMountedRef.current) {
+      setLoading(false)
+      setMessage("")
+    }
+
+    const feedUrls = group?.feeds || null
+    const results = searchItems(searchQuery, feedsRef.current, feedUrls)
+    if (results.length > 0) {
+      renderItems(results)
+      setScrollToEnd(true)
+    }
+
+    if (maxHistoryReached) {
+      if (results.length === 0) {
+        if (isMountedRef.current) setMessage("No results found.")
+      } else {
+        if (isMountedRef.current) setMessage("No more items available")
+      }
+    } else if (results.length > 0) {
+      setTimeout(() => {
+        if (isMountedRef.current) setupLoadMoreObserver()
+      }, 100)
+    } else {
+      requestMoreHistory()
+      needsMoreItemsRef.current = true
+      if (isMountedRef.current) setLoading(true)
+    }
+  }, [
+    searchQuery,
+    group,
+    renderItems,
+    requestMoreHistory,
+    maxHistoryReached,
+    setMessage,
+    setupLoadMoreObserver,
+  ])
+
   // When group changes, reset and load initial items
   useEffect(() => {
+    if (searchQuery) return
+
     if (!group) {
       updateItem({reset: true})
       if (isMountedRef.current) {
@@ -292,26 +399,35 @@ const ItemList = ({
       renderItems(initialItems)
       oldestTimestampRef.current =
         initialItems[initialItems.length - 1].timestamp
-      setNewFrom(initialItems[0].key)
       setLoading(false)
       // Set up observer after items are rendered
-      const timeoutId = setTimeout(() => {
+      const observerTimeoutId = setTimeout(() => {
         if (isMountedRef.current) {
           setupLoadMoreObserver()
         }
       }, 100)
-      return () => clearTimeout(timeoutId)
+      // Delay newFrom so items have time to load before the marker is fixed
+      const newFromTimeoutId = setTimeout(() => {
+        if (isMountedRef.current && itemsRef.current.all.length > 0) {
+          setNewFrom(itemsRef.current.all[itemsRef.current.all.length - 1].key)
+        }
+      }, 5000)
+      return () => {
+        clearTimeout(observerTimeoutId)
+        clearTimeout(newFromTimeoutId)
+      }
     }
 
     if (maxHistoryReached) {
       setLoading(false)
-      setMessage("No more items available for this group.")
+      setMessage("No more items available")
     } else {
       requestMoreHistory()
       needsMoreItemsRef.current = true
     }
   }, [
     group,
+    searchQuery,
     renderItems,
     setupLoadMoreObserver,
     setMessage,
@@ -326,7 +442,7 @@ const ItemList = ({
   //   2. Items that arrive from itemHandler before the background loader has
   //      started (feedsLoaded not yet true) which historyDayLoaded can't catch.
   useEffect(() => {
-    if (!group) return
+    if (searchQuery || !group) return
 
     const latestItems = getGroupItems(group, feedsRef.current, Date.now(), 50)
     const unrendered = latestItems.filter(
@@ -346,7 +462,14 @@ const ItemList = ({
     setTimeout(() => {
       if (isMountedRef.current) setupLoadMoreObserver()
     }, 100)
-  }, [feeds, group, renderItems, setupLoadMoreObserver, setMessage])
+  }, [
+    feeds,
+    group,
+    searchQuery,
+    renderItems,
+    setupLoadMoreObserver,
+    setMessage,
+  ])
 
   // Re-render bookmark list when bookmarkItems changes (add or remove)
   useEffect(() => {
@@ -369,7 +492,7 @@ const ItemList = ({
         </Box>
       )}
       <Grid container>
-        {group &&
+        {(group || searchQuery) &&
           items &&
           items.all.map(i => (
             <Item
@@ -377,6 +500,7 @@ const ItemList = ({
               item={i}
               itemRefs={itemRefs}
               newFrom={
+                !searchQuery &&
                 newFrom !== 0 &&
                 items.all.findIndex(i => i.key === newFrom) <
                   items.all.length - 1
@@ -387,6 +511,7 @@ const ItemList = ({
               isBookmarkGroup={!!group?.bookmarks}
               bookmarkGroup={bookmarkGroup}
               user={user}
+              searchQuery={searchQuery}
             />
           ))}
       </Grid>

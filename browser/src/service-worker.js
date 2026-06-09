@@ -10,8 +10,9 @@
 import {clientsClaim} from "workbox-core"
 import {precacheAndRoute, createHandlerBoundToURL} from "workbox-precaching"
 import {registerRoute} from "workbox-routing"
-import {imageCache} from "workbox-recipes"
-import {googleFontsCache} from "workbox-recipes"
+import {CacheFirst} from "workbox-strategies"
+import {RangeRequestsPlugin} from "workbox-range-requests"
+import {imageCache, googleFontsCache} from "workbox-recipes"
 
 clientsClaim()
 
@@ -57,3 +58,21 @@ self.addEventListener("message", event => {
 // Any other custom service worker logic can go here.
 imageCache({maxAgeSeconds: 14 * 24 * 60 * 60, maxEntries: 5000})
 googleFontsCache()
+
+// Cache audio and video for offline playback. No hard quota — the browser
+// manages eviction.
+registerRoute(
+  ({request}) => request.destination === "audio",
+  new CacheFirst({
+    cacheName: "audio",
+    plugins: [new RangeRequestsPlugin()],
+  }),
+)
+
+registerRoute(
+  ({request}) => request.destination === "video",
+  new CacheFirst({
+    cacheName: "video",
+    plugins: [new RangeRequestsPlugin()],
+  }),
+)

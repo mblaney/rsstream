@@ -11,7 +11,6 @@ import Group from "./Group"
 const GroupList = ({
   groups,
   groupsLoaded,
-  groupsUpdating,
   setGroup,
   hasBookmarks,
 }) => {
@@ -44,7 +43,7 @@ const GroupList = ({
     <Container maxWidth="md">
       <Grid container>
         <Grid item xs={12}>
-          {(!groupsLoaded || groupsUpdating) && (
+          {!groupsLoaded && (
             <Box sx={{display: "flex", justifyContent: "center", p: 2}}>
               <CircularProgress />
             </Box>

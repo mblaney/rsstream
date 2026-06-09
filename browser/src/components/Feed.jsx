@@ -1,5 +1,6 @@
 import parse from "html-react-parser"
 import Avatar from "@mui/material/Avatar"
+import Link from "@mui/material/Link"
 import IconButton from "@mui/material/IconButton"
 import ListItem from "@mui/material/ListItem"
 import ListItemAvatar from "@mui/material/ListItemAvatar"
@@ -136,7 +137,16 @@ const Feed = ({
         </ListItemAvatar>
         <ListItemText
           primary={feed.title && parse(feed.title)}
-          secondary={feed.html_url !== "" ? feed.html_url : feed.key}
+          secondary={
+            <Link
+              href={feed.html_url !== "" ? feed.html_url : feed.key}
+              target="_blank"
+              rel="noreferrer"
+              onClick={e => e.stopPropagation()}
+            >
+              {feed.html_url !== "" ? feed.html_url : feed.key}
+            </Link>
+          }
         />
         {selected && (
           <IconButton edge="end" aria-label="check">

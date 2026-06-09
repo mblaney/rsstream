@@ -1,3 +1,4 @@
+import Box from "@mui/material/Box"
 import Card from "@mui/material/Card"
 import CardContent from "@mui/material/CardContent"
 import Container from "@mui/material/Container"
@@ -15,9 +16,21 @@ const Help = ({loggedIn, mode, setMode}) => {
           <Grid item xs={12}>
             <Card sx={{mt: 2}}>
               <CardContent>
-                <Typography sx={{pb: 2}} variant="h4">
-                  Welcome
-                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    pb: 2,
+                  }}
+                >
+                  <Typography variant="h4">Welcome</Typography>
+                  <img
+                    src="/logo192.png"
+                    alt="RSStream"
+                    style={{width: 80, height: 80}}
+                  />
+                </Box>
                 <Typography sx={{pb: 1}}>
                   Thanks for checking out <b>RSStream</b>!
                 </Typography>
@@ -32,7 +45,7 @@ const Help = ({loggedIn, mode, setMode}) => {
                   account, otherwise you will need an invite code to{" "}
                   <Link href="/register">register</Link>. You can request an{" "}
                   <Link href="/invite">invite code here</Link> and you will
-                  receive a reply when it becomes available.
+                  receive a reply when yours becomes available.
                 </Typography>
               </CardContent>
             </Card>

@@ -1,5 +1,6 @@
-import {useState} from "react"
+import {useEffect, useState} from "react"
 import parse from "html-react-parser"
+import {red} from "@mui/material/colors"
 import Avatar from "@mui/material/Avatar"
 import Box from "@mui/material/Box"
 import Divider from "@mui/material/Divider"
@@ -10,9 +11,12 @@ import Typography from "@mui/material/Typography"
 import BookmarkIcon from "@mui/icons-material/Bookmark"
 import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder"
 import DeleteIcon from "@mui/icons-material/Delete"
+import DownloadForOfflineIcon from "@mui/icons-material/DownloadForOffline"
+import OfflinePinIcon from "@mui/icons-material/OfflinePin"
 import PersonIcon from "@mui/icons-material/Person"
 import {urlAvatar} from "../utils/avatar.js"
-import {formatDate} from "../utils/format.js"
+import {formatDate, decodeEntities} from "../utils/format.js"
+import {buildHighlighter, highlightText} from "../utils/highlight.jsx"
 
 const contentSx = theme => ({
   overflowWrap: "break-word",
@@ -48,19 +52,66 @@ const Item = ({
   isBookmarkGroup,
   bookmarkGroup,
   user,
+  searchQuery,
 }) => {
   const [showMore, setShowMore] = useState(false)
-  const stripped = item.content && item.content.replace(/(<([^>]+)>)/g, "")
+  const [savedAudio, setSavedAudio] = useState(new Set())
+  const [savingAudio, setSavingAudio] = useState(new Set())
+  const stripped =
+    item.content &&
+    decodeEntities(item.content.replace(/(<([^>]+)>)/g, ""))
+  useEffect(() => {
+    if (!("caches" in window) || !item.enclosure?.audio) return
+    ;(async () => {
+      const cached = new Set()
+      for (const a of item.enclosure.audio) {
+        if (a.startsWith("https") && (await caches.match(a))) cached.add(a)
+      }
+      setSavedAudio(cached)
+    })()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveForOffline = async (url, name) => {
+    setSavingAudio(s => new Set(s).add(url))
+    try {
+      const cache = await caches.open("audio")
+      const response = await fetch(url)
+      if (response.ok) {
+        const headers = new Headers(response.headers)
+        headers.set("x-cache-name", name)
+        const named = new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        })
+        await cache.put(url, named)
+        setSavedAudio(s => new Set(s).add(url))
+      }
+    } catch (e) {
+      console.error("Failed to cache audio", e)
+    } finally {
+      setSavingAudio(s => {
+        const next = new Set(s)
+        next.delete(url)
+        return next
+      })
+    }
+  }
+
+  const highlight = buildHighlighter(searchQuery)
+  const parseOptions = highlight ? {replace: highlight} : {}
 
   const addBookmark = () => {
     if (isBookmarked) return
 
     const tag = /(<([^>]+)>)/g
-    const text = item.title
-      ? item.title.replace(tag, "")
-      : item.content
-        ? item.content.replace(tag, "")
-        : ""
+    const text = decodeEntities(
+      item.title
+        ? item.title.replace(tag, "")
+        : item.content
+          ? item.content.replace(tag, "")
+          : "",
+    )
     const now = Date.now()
     const data = {
       key: item.guid,
@@ -132,16 +183,18 @@ const Item = ({
           <Typography
             variant="h6"
             sx={{
-              ml: 2,
-              mr: 1,
+              ml: 1,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
             }}
           >
             {item.author
-              ? item.author.replace(/^https?:\/\//, "")
-              : item.feedTitle}
+              ? highlightText(
+                  item.author.replace(/^https?:\/\//, ""),
+                  searchQuery,
+                )
+              : highlightText(item.feedTitle, searchQuery)}
           </Typography>
           {isBookmarkGroup ? (
             <IconButton
@@ -176,12 +229,12 @@ const Item = ({
         </Box>
         {item.title && (
           <Typography>
-            <b>{parse(item.title)}</b>
+            <b>{parse(item.title, parseOptions)}</b>
           </Typography>
         )}
         {item.content && stripped.length > 1200 && showMore && (
           <Typography component="div" sx={contentSx}>
-            {parse(item.content)}{" "}
+            {parse(item.content, parseOptions)}{" "}
             <Link
               component="button"
               onClick={() => {
@@ -194,7 +247,7 @@ const Item = ({
         )}
         {item.content && stripped.length > 1200 && !showMore && (
           <Typography>
-            {stripped.substring(0, 800)}...{" "}
+            {highlightText(stripped.substring(0, 800), searchQuery)}...{" "}
             <Link
               component="button"
               onClick={() => {
@@ -207,7 +260,7 @@ const Item = ({
         )}
         {item.content && stripped.length <= 1200 && (
           <Typography component="div" sx={contentSx}>
-            {parse(item.content)}
+            {parse(item.content, parseOptions)}
           </Typography>
         )}
         {item.enclosure &&
@@ -224,7 +277,39 @@ const Item = ({
           item.enclosure.audio &&
           item.enclosure.audio.map(a =>
             a.startsWith("https") ? (
-              <audio key={a} controls src={a} style={{width: "100%"}}></audio>
+              <Box key={a} sx={{display: "flex", alignItems: "center", gap: 1}}>
+                <audio
+                  controls
+                  crossOrigin="anonymous"
+                  src={a}
+                  style={{flexGrow: 1}}
+                ></audio>
+                {"caches" in window && (
+                  <IconButton
+                    size="small"
+                    disabled={savingAudio.has(a)}
+                    onClick={() => saveForOffline(a, item.title || item.url)}
+                    title={
+                      savedAudio.has(a)
+                        ? "Saved for offline"
+                        : "Save for offline"
+                    }
+                    sx={
+                      savedAudio.has(a)
+                        ? {color: "success.main"}
+                        : savingAudio.has(a)
+                          ? {"&.Mui-disabled": {color: "warning.main"}}
+                          : {}
+                    }
+                  >
+                    {savedAudio.has(a) ? (
+                      <OfflinePinIcon fontSize="small" />
+                    ) : (
+                      <DownloadForOfflineIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                )}
+              </Box>
             ) : (
               <Link href={a} target="_blank">
                 {a}
@@ -248,7 +333,21 @@ const Item = ({
             ),
           )}
       </Box>
-      {item.key === newFrom && <Divider textAlign="right">New</Divider>}
+      {item.key === newFrom && (
+        <Divider
+          textAlign="right"
+          sx={theme => ({
+            borderColor: red[900],
+            color: red[900],
+            ...theme.applyStyles("dark", {
+              borderColor: red[500],
+              color: red[500],
+            }),
+          })}
+        >
+          New
+        </Divider>
+      )}
     </Grid>
   )
 }

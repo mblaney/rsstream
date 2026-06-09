@@ -126,6 +126,68 @@ describe("EditGroup Component", () => {
     expect(submitButton).toBeTruthy()
   })
 
+  it("should render show unread count toggle", () => {
+    const mockShowGroupList = vi.fn()
+    render(
+      <EditGroup
+        user={user}
+        code="test-code"
+        groups={{all: [{key: "test-group", feeds: []}]}}
+        currentGroup="test-group"
+        showGroupList={mockShowGroupList}
+      />,
+    )
+
+    expect(screen.getByLabelText(/show unread count/i)).toBeTruthy()
+  })
+
+  it("should default show unread count toggle to checked", () => {
+    const mockShowGroupList = vi.fn()
+    render(
+      <EditGroup
+        user={user}
+        code="test-code"
+        groups={{all: [{key: "test-group", feeds: []}]}}
+        currentGroup="test-group"
+        showGroupList={mockShowGroupList}
+      />,
+    )
+
+    const toggle = screen.getByLabelText(/show unread count/i)
+    expect(toggle.checked).toBe(true)
+  })
+
+  it("should initialise show unread count toggle from group data", () => {
+    const mockShowGroupList = vi.fn()
+    render(
+      <EditGroup
+        user={user}
+        code="test-code"
+        groups={{all: [{key: "test-group", feeds: [], showCount: false}]}}
+        currentGroup="test-group"
+        showGroupList={mockShowGroupList}
+      />,
+    )
+
+    const toggle = screen.getByLabelText(/show unread count/i)
+    expect(toggle.checked).toBe(false)
+  })
+
+  it("should not render show unread count toggle for bookmark group", () => {
+    const mockShowGroupList = vi.fn()
+    render(
+      <EditGroup
+        user={user}
+        code="test-code"
+        groups={{all: [{key: "test-group", bookmarks: true}]}}
+        currentGroup="test-group"
+        showGroupList={mockShowGroupList}
+      />,
+    )
+
+    expect(screen.queryByLabelText(/show unread count/i)).toBeNull()
+  })
+
   it("should update group name on input change", async () => {
     const mockShowGroupList = vi.fn()
     render(
