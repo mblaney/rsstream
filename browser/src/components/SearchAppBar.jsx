@@ -5,7 +5,6 @@ import {red} from "@mui/material/colors"
 import AppBar from "@mui/material/AppBar"
 import Box from "@mui/material/Box"
 import Button from "@mui/material/Button"
-import CircularProgress from "@mui/material/CircularProgress"
 import IconButton from "@mui/material/IconButton"
 import InputBase from "@mui/material/InputBase"
 import MenuItem from "@mui/material/MenuItem"
@@ -85,7 +84,6 @@ const SearchAppBar = ({
   searchQuery,
   mode,
   setMode,
-  groupsUpdating,
   title,
   groupId,
 }) => {
@@ -253,20 +251,11 @@ const SearchAppBar = ({
             aria-label="home"
             onClick={home}
           >
-            {groupsUpdating ? (
-              <CircularProgress
-                size={28}
-                sx={theme => ({
-                  ...theme.applyStyles("dark", {color: red[900]}),
-                })}
-              />
-            ) : (
-              <RssFeedIcon
-                sx={theme => ({
-                  ...theme.applyStyles("dark", {color: red[900]}),
-                })}
-              />
-            )}
+            <RssFeedIcon
+              sx={theme => ({
+                ...theme.applyStyles("dark", {color: red[900]}),
+              })}
+            />
           </IconButton>
           {title ? (
             <Button

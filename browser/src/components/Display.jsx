@@ -39,9 +39,7 @@ const Display = ({
   const [feedList, setFeedList] = useState(false)
   const [addFeed, setAddFeed] = useState(false)
   const [groupsLoaded, setGroupsLoaded] = useState(false)
-  const [groupsUpdating, setGroupsUpdating] = useState(false)
   const statsRef = useRef(new Map())
-  const updatingTimerRef = useRef(null)
   const feedsRef = useRef(feeds)
   feedsRef.current = feeds // Update synchronously so child effects always see current feeds
   const groupRef = useRef(group)
@@ -315,12 +313,6 @@ const Display = ({
         groupUpdate.timestamp = g.timestamp
       }
       updateGroup(groupUpdate)
-      setGroupsUpdating(true)
-      clearTimeout(updatingTimerRef.current)
-      updatingTimerRef.current = setTimeout(
-        () => setGroupsUpdating(false),
-        5000,
-      )
       const effectiveLatest =
         g.latest > 0 ? g.latest : (knownGroup?.latest ?? 0)
       const effectiveFeeds =
@@ -358,7 +350,6 @@ const Display = ({
     user.get("public").next("groups").on(groupsHandler, true)
 
     return () => {
-      clearTimeout(updatingTimerRef.current)
       user.get("public").next("groups").off(groupsHandler)
       for (const [name, handler] of groupListeners.entries()) {
         user.get("public").next("groups").next(name).off(handler)
@@ -379,7 +370,6 @@ const Display = ({
           searchQuery={searchQuery}
           mode={mode}
           setMode={setMode}
-          groupsUpdating={groupsUpdating}
           title={
             group
               ? group.name || "Untitled"
