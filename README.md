@@ -43,6 +43,9 @@ relies on these credentials, so keep them safe.
 After you've created the account start the server with:
  - `node app.js`
 
+For development this will run a server at localhost:3000, you will need to build
+the front end so that it can be served, see the browser instructions below.
+
 For production you can start with pm2:
 
  - `npm install pm2 -g`
@@ -79,14 +82,16 @@ and password.
 
 ### Browser
 
-The front end is served from the `browser/build` directory, which was created
-with `npx create-react-app browser --template cra-template-pwa`.
-
-If you modify the front end you can rebuild it by running:
+The front end is served from the `browser/build` directory, which uses
+[Vite](https://vite.dev) as the build tool. The build directory is not
+included in the repo, so after cloning you will need to build it:
 
  - `cd browser`
  - `npm install`
  - `npm run build`
+
+If you modify the front end you can rebuild it by running `npm run build`
+from the `browser` directory.
 
 If you would like to contribute please run: `npx prettier app.js --write` from
 the server directory, or `npx prettier src --write && npm run build` from the
