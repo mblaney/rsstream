@@ -8,7 +8,7 @@ import {fileURLToPath} from "url"
 import fs from "fs/promises"
 import Holster from "@mblaney/holster/src/holster.js"
 
-const holster = Holster({secure: true, memoryLimit: 1536, port: 8765})
+const holster = Holster({secure: true, memoryLimit: 1536, port: 8765, userLimit: true})
 const user = holster.user()
 const username = process.env.HOLSTER_USER_NAME ?? "host"
 const password = process.env.HOLSTER_USER_PASSWORD ?? "password"
@@ -18,6 +18,9 @@ const addFeedID = process.env.ADD_FEED_ID
 const addFeedApiKey = process.env.ADD_FEED_API_KEY
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const HASH_CACHE_FILE = path.join(dirname, ".hash_cache.json")
+const USER_STORAGE_FILE = ".user_storage.json"
+const USER_LIMIT_FILE = ".user_limit.json"
+const HOST_STORAGE_LIMIT = parseInt(process.env.HOST_STORAGE_LIMIT, 10) || 1024
 const basicAuth = (req, res, next) => {
   const auth = (req.headers.authorization || "").split(" ")[1] || ""
   const [u, p] = Buffer.from(auth, "base64").toString().split(":")
@@ -49,6 +52,23 @@ const pendingRequests = new Map()
 // Content hash cache to avoid processing unchanged data (2-week TTL matching item age limit)
 const contentHashCache = new Map()
 const HASH_CACHE_TTL = 1209600000 // 2 weeks TTL for content hashes
+
+async function writeUserLimit(pub, limit) {
+  let data = {}
+  try {
+    data = JSON.parse(await fs.readFile(USER_LIMIT_FILE, "utf8"))
+  } catch (err) {
+    if (err.code !== "ENOENT") console.log("Error reading user limit file:", err.message)
+  }
+  if (data[pub] !== limit) {
+    data[pub] = limit
+    try {
+      await fs.writeFile(USER_LIMIT_FILE, JSON.stringify(data), "utf8")
+    } catch (err) {
+      console.log("Error writing user limit file:", err.message)
+    }
+  }
+}
 
 // Load hash cache from disk on startup
 async function loadHashCache() {
@@ -244,9 +264,22 @@ function timeDbOperation(operation, operationName = "db-op") {
 }
 
 // Memory and performance monitoring
-setInterval(() => {
+setInterval(async () => {
   const used = process.memoryUsage()
   const uptime = process.uptime()
+
+  if (user.is) {
+    try {
+      const storageData = JSON.parse(await fs.readFile(USER_STORAGE_FILE, "utf8"))
+      const hostBytes = storageData[user.is.pub] ?? 0
+      const hostMB = Math.round(hostBytes / 1048576)
+      const pct = Math.round((hostMB / HOST_STORAGE_LIMIT) * 100)
+      const warning = hostMB >= HOST_STORAGE_LIMIT * 0.9 ? " WARNING: near limit" : ""
+      console.log(`[MONITOR] Host storage: ${hostMB}MB / ${HOST_STORAGE_LIMIT}MB (${pct}%)${warning}`)
+    } catch (err) {
+      if (err.code !== "ENOENT") console.log("[MONITOR] Error reading host storage:", err.message)
+    }
+  }
 
   console.log(
     `[MONITOR] Memory: ${Math.round(used.rss / 1024 / 1024)}MB RSS, ${Math.round(used.heapUsed / 1024 / 1024)}MB Heap`,
@@ -297,6 +330,7 @@ user.auth(username, password, async err => {
   } else {
     console.log(username + " logged in")
     mapInviteCodes()
+    await writeUserLimit(user.is.pub, HOST_STORAGE_LIMIT)
     // Load hash cache from disk to avoid reprocessing items on restart
     await loadHashCache()
     scheduleDailySentinelJob()
@@ -1181,6 +1215,38 @@ app.post("/private/update-feed-limit", async (req, res) => {
 
       res.end()
     })
+})
+
+app.post("/private/update-storage-limit", async (req, res) => {
+  const code = req.body.code
+  if (!code) {
+    res.status(400).send("code required")
+    return
+  }
+  const limit = req.body.limit
+  if (typeof limit !== "number") {
+    res.status(400).send("limit required")
+    return
+  }
+  if (!user.is) {
+    res.status(500).send("Host error")
+    return
+  }
+
+  const account = await new Promise(res => {
+    user.get("accounts").next(code, res)
+  })
+  if (!account) {
+    res.status(404).send("Account not found")
+    return
+  }
+  if (account.validate) {
+    res.status(400).send("Email not validated")
+    return
+  }
+
+  await writeUserLimit(account.pub, limit)
+  res.end()
 })
 
 app.get("/private/performance", (req, res) => {

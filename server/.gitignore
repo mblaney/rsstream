@@ -4,6 +4,8 @@
 # storage
 /radata
 /.hash_cache.json
+/.user_storage.json
+/.user_limit.json
 
 # misc
 *~

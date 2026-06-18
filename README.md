@@ -67,6 +67,23 @@ The value `<code>` is the account code that you want to allocate the new invite
 codes to. You can set the number of invite codes to create for an account by
 adding `"count": <number>` to the request, otherwise one code will be created.
 
+The first account created in RSStream is given the code "admin", which can then
+be used to create invite codes for other accounts.
+
+#### Other private endpoints
+
+- `POST /private/send-invite-code` - Once an invite code has been created this
+  endpoint will send it to the provided email address using the server email
+  configuration described below. Required parameters: `code` and `email`.
+
+- `POST /private/update-feed-limit` - Update the maximum number of feeds an
+  account can subscribe to. Required parameters: `code` and `limit`.
+
+- `POST /private/update-storage-limit` - Update the Holster storage limit for
+  an account. Required parameters: `code` and `limit` (MB).
+
+#### External configuration
+
 If you have sendmail available on your server you can export `MAIL_FROM` and
 `MAIL_BCC` to send email to your users. If `MAIL_FROM` is not set then the
 same information will be logged so that you have access to it.
@@ -94,5 +111,4 @@ If you modify the front end you can rebuild it by running `npm run build`
 from the `browser` directory.
 
 If you would like to contribute please run: `npx prettier app.js --write` from
-the server directory, or `npx prettier src --write && npm run build` from the
-browser directory.
+the server directory, or `npx prettier src --write` from the browser directory.
