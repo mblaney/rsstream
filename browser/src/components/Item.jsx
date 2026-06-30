@@ -58,8 +58,7 @@ const Item = ({
   const [savedAudio, setSavedAudio] = useState(new Set())
   const [savingAudio, setSavingAudio] = useState(new Set())
   const stripped =
-    item.content &&
-    decodeEntities(item.content.replace(/(<([^>]+)>)/g, ""))
+    item.content && decodeEntities(item.content.replace(/(<([^>]+)>)/g, ""))
   useEffect(() => {
     if (!("caches" in window) || !item.enclosure?.audio) return
     ;(async () => {

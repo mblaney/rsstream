@@ -8,12 +8,7 @@ import List from "@mui/material/List"
 import Typography from "@mui/material/Typography"
 import Group from "./Group"
 
-const GroupList = ({
-  groups,
-  groupsLoaded,
-  setGroup,
-  hasBookmarks,
-}) => {
+const GroupList = ({groups, groupsLoaded, setGroup, hasBookmarks}) => {
   const [message, setMessage] = useState("")
 
   const hasGroups =

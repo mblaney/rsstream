@@ -1,6 +1,5 @@
-import {describe, it, expect, beforeAll, vi} from "vitest"
+import {describe, it, expect, beforeAll, afterAll, vi} from "vitest"
 import {render, screen, waitFor, act} from "@testing-library/react"
-import {readdirSync} from "node:fs"
 import {rm} from "node:fs/promises"
 import {Server} from "mock-socket"
 import Holster from "@mblaney/holster/src/holster.js"
@@ -12,20 +11,21 @@ const PORT = 9200
 const WS_URL = `ws://localhost:${PORT}`
 const feedUrl = "https://example.com/sync-test-feed"
 const groupName = "Cross-Device Sync Group"
+const testDirs = [
+  `holster-sync-${PORT}-server`,
+  `holster-sync-${PORT}-a`,
+  `holster-sync-${PORT}-b`,
+]
 
 describe("Display cross-device group sync", () => {
   let userA, userB
   let groupSoulId
 
   beforeAll(async () => {
-    await Promise.all(
-      readdirSync("/tmp")
-        .filter(f => f.startsWith(`holster-sync-${PORT}`))
-        .map(f => rm(`/tmp/${f}`, {recursive: true, force: true})),
-    )
+    await Promise.all(testDirs.map(f => rm(f, {recursive: true, force: true})))
 
     const wss = new Server(WS_URL)
-    const server = Holster({wss, file: `/tmp/holster-sync-${PORT}-server`})
+    const server = Holster({wss, file: `holster-sync-${PORT}-server`})
     const serverUser = server.user()
 
     await new Promise((resolve, reject) => {
@@ -37,7 +37,7 @@ describe("Display cross-device group sync", () => {
 
     const holsterA = Holster({
       peers: [WS_URL],
-      file: `/tmp/holster-sync-${PORT}-a`,
+      file: `holster-sync-${PORT}-a`,
     })
     userA = holsterA.user()
     await new Promise((resolve, reject) => {
@@ -49,7 +49,7 @@ describe("Display cross-device group sync", () => {
 
     const holsterB = Holster({
       peers: [WS_URL],
-      file: `/tmp/holster-sync-${PORT}-b`,
+      file: `holster-sync-${PORT}-b`,
     })
     userB = holsterB.user()
     await new Promise((resolve, reject) => {
@@ -59,6 +59,10 @@ describe("Display cross-device group sync", () => {
       })
     })
   }, 15000)
+
+  afterAll(async () => {
+    await Promise.all(testDirs.map(f => rm(f, {recursive: true, force: true})))
+  })
 
   const displayProps = () => ({
     user: userA,
