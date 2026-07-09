@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useReducer, useRef, useState} from "react"
 import Box from "@mui/material/Box"
 import Typography from "@mui/material/Typography"
+import {SearchAppBar} from "@mblaney/holster-browser"
 import {init, reducer} from "../utils/reducer.js"
 import {decodeEntities} from "../utils/format.js"
 import {logEvent} from "../utils/debugEvents"
@@ -9,7 +10,6 @@ import EditGroup from "./EditGroup"
 import FeedList from "./FeedList"
 import GroupList from "./GroupList"
 import ItemList from "./ItemList"
-import SearchAppBar from "./SearchAppBar"
 
 const Display = ({
   user,
@@ -17,6 +17,7 @@ const Display = ({
   code,
   mode,
   setMode,
+  appBar,
   feeds,
   feedsLoaded,
   debugMode,
@@ -361,15 +362,8 @@ const Display = ({
     <>
       {user.is && (
         <SearchAppBar
-          page="display"
-          showGroupList={showGroupList}
-          createGroup={createGroup}
-          editGroup={editGroup}
-          createFeed={createFeed}
-          onSearch={setSearchQuery}
-          searchQuery={searchQuery}
-          mode={mode}
-          setMode={setMode}
+          {...appBar}
+          onHomeClick={() => showGroupList(false)}
           title={
             group
               ? group.name || "Untitled"
@@ -377,7 +371,17 @@ const Display = ({
                 ? "Search results"
                 : ""
           }
-          groupId={group ? group.key : ""}
+          onTitleClick={() => group && editGroup(group.key)}
+          onSearch={setSearchQuery}
+          searchQuery={searchQuery}
+          mode={mode}
+          setMode={setMode}
+          menuItems={[
+            {label: "Add group", onClick: createGroup},
+            {label: "Add feed", onClick: createFeed},
+            {label: "Settings", onClick: () => (window.location = "/settings")},
+            {label: "Help", onClick: () => (window.location = "/help")},
+          ]}
         />
       )}
       {groupList && !group && !searchQuery && (

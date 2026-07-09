@@ -3,18 +3,21 @@ import {BrowserRouter, Routes, Route, Navigate} from "react-router-dom"
 import Holster from "@mblaney/holster/src/holster.js"
 import {red} from "@mui/material/colors"
 import {ThemeProvider, createTheme} from "@mui/material/styles"
+import RssFeedIcon from "@mui/icons-material/RssFeed"
 import CssBaseline from "@mui/material/CssBaseline"
 import GlobalStyles from "@mui/material/GlobalStyles"
+import {
+  Login,
+  Register,
+  RequestCode,
+  ValidateEmail,
+  ResetPassword,
+  UpdatePassword,
+} from "@mblaney/holster-browser"
 import Display from "./components/Display"
 import DebugPanel from "./components/DebugPanel"
 import Help from "./components/Help"
-import Register from "./components/Register"
-import Invite from "./components/Invite"
-import Login from "./components/Login"
-import Settings from "./components/Settings"
-import ValidateEmail from "./components/ValidateEmail"
-import ResetPassword from "./components/ResetPassword"
-import UpdatePassword from "./components/UpdatePassword"
+import AppSettings from "./components/AppSettings"
 import {logEvent} from "./utils/debugEvents"
 
 // If on localhost assume Holster is directly available and use the default
@@ -54,6 +57,17 @@ const pages = [
 ]
 const redirect = params.get("redirect")
 const to = redirect ? (pages.includes(redirect) ? `/${redirect}` : "/") : ""
+
+const appBar = {
+  name: "rsstream",
+  icon: RssFeedIcon,
+  iconSx: theme => ({...theme.applyStyles("dark", {color: red[900]})}),
+  menuItems: [
+    {label: "Groups", onClick: () => (window.location = "/")},
+    {label: "Settings", onClick: () => (window.location = "/settings")},
+    {label: "Help", onClick: () => (window.location = "/help")},
+  ],
+}
 
 const App = () => {
   const getCurrentDay = () => {
@@ -724,17 +738,35 @@ const App = () => {
             <Route
               path="/invite"
               element={
-                <Invite loggedIn={user.is} mode={mode} setMode={setMode} />
+                <RequestCode
+                  loggedIn={user.is}
+                  mode={mode}
+                  setMode={setMode}
+                  appBar={appBar}
+                />
               }
             />
             <Route
               path="/register"
-              element={<Register user={user} mode={mode} setMode={setMode} />}
+              element={
+                <Register
+                  user={user}
+                  mode={mode}
+                  setMode={setMode}
+                  appBar={appBar}
+                />
+              }
             />
             <Route
               path="/login"
               element={
-                <Login user={user} host={host} mode={mode} setMode={setMode} />
+                <Login
+                  user={user}
+                  host={host}
+                  mode={mode}
+                  setMode={setMode}
+                  appBar={appBar}
+                />
               }
             />
             <Route
@@ -744,6 +776,7 @@ const App = () => {
                   loggedIn={user.is}
                   mode={mode}
                   setMode={setMode}
+                  appBar={appBar}
                   code={params.get("code")}
                   validate={params.get("validate")}
                 />
@@ -756,6 +789,7 @@ const App = () => {
                   loggedIn={user.is}
                   mode={mode}
                   setMode={setMode}
+                  appBar={appBar}
                 />
               }
             />
@@ -764,11 +798,13 @@ const App = () => {
               element={
                 <UpdatePassword
                   user={user}
+                  loggedIn={!!user.is}
                   current={params.get("username")}
                   code={params.get("code")}
                   reset={params.get("reset")}
                   mode={mode}
                   setMode={setMode}
+                  appBar={appBar}
                 />
               }
             />
@@ -776,12 +812,13 @@ const App = () => {
               path="/settings"
               element={
                 user.is ? (
-                  <Settings
+                  <AppSettings
                     user={user}
                     host={host}
                     code={code}
                     mode={mode}
                     setMode={setMode}
+                    appBar={appBar}
                   />
                 ) : (
                   <Navigate to="/login" />
@@ -791,7 +828,12 @@ const App = () => {
             <Route
               path="/help"
               element={
-                <Help loggedIn={user.is} mode={mode} setMode={setMode} />
+                <Help
+                  loggedIn={user.is}
+                  mode={mode}
+                  setMode={setMode}
+                  appBar={appBar}
+                />
               }
             />
             <Route
@@ -806,6 +848,7 @@ const App = () => {
                     code={code}
                     mode={mode}
                     setMode={setMode}
+                    appBar={appBar}
                     feeds={feeds}
                     feedsLoaded={feedsLoaded}
                     debugMode={debugMode}

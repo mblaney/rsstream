@@ -1,6 +1,6 @@
 import {describe, it, expect, beforeAll, afterEach, vi} from "vitest"
 import {render, screen} from "@testing-library/react"
-import Settings from "../Settings"
+import AppSettings from "../AppSettings"
 import {createTestUser} from "../../__tests__/setup"
 
 describe("Settings Component", () => {
@@ -17,7 +17,13 @@ describe("Settings Component", () => {
 
   it("renders without crashing", () => {
     const {container} = render(
-      <Settings user={user} host="" code="" mode="light" setMode={vi.fn()} />,
+      <AppSettings
+        user={user}
+        host=""
+        code=""
+        mode="light"
+        setMode={vi.fn()}
+      />,
     )
     expect(container).toBeTruthy()
   })
@@ -25,21 +31,39 @@ describe("Settings Component", () => {
   it("shows account name from sessionStorage", () => {
     sessionStorage.setItem("name", "Alice")
     render(
-      <Settings user={user} host="" code="" mode="light" setMode={vi.fn()} />,
+      <AppSettings
+        user={user}
+        host=""
+        code=""
+        mode="light"
+        setMode={vi.fn()}
+      />,
     )
     expect(screen.getByText("Hello Alice")).toBeTruthy()
   })
 
   it("shows fallback message when name is not set", () => {
     render(
-      <Settings user={user} host="" code="" mode="light" setMode={vi.fn()} />,
+      <AppSettings
+        user={user}
+        host=""
+        code=""
+        mode="light"
+        setMode={vi.fn()}
+      />,
     )
     expect(screen.getByText(/Account not found/)).toBeTruthy()
   })
 
   it("renders password change form", () => {
     render(
-      <Settings user={user} host="" code="" mode="light" setMode={vi.fn()} />,
+      <AppSettings
+        user={user}
+        host=""
+        code=""
+        mode="light"
+        setMode={vi.fn()}
+      />,
     )
     expect(
       screen.getByText(/Use this form to change your password/),
@@ -49,14 +73,26 @@ describe("Settings Component", () => {
 
   it("renders logout button", () => {
     render(
-      <Settings user={user} host="" code="" mode="light" setMode={vi.fn()} />,
+      <AppSettings
+        user={user}
+        host=""
+        code=""
+        mode="light"
+        setMode={vi.fn()}
+      />,
     )
     expect(screen.getByRole("button", {name: /logout/i})).toBeTruthy()
   })
 
   it("renders sponsor link with correct href", () => {
     render(
-      <Settings user={user} host="" code="" mode="light" setMode={vi.fn()} />,
+      <AppSettings
+        user={user}
+        host=""
+        code=""
+        mode="light"
+        setMode={vi.fn()}
+      />,
     )
     const link = screen.getByRole("link", {name: /sponsor the project/i})
     expect(link).toBeTruthy()
@@ -67,7 +103,13 @@ describe("Settings Component", () => {
 
   it("does not show feed count when account is not loaded", () => {
     render(
-      <Settings user={user} host="" code="" mode="light" setMode={vi.fn()} />,
+      <AppSettings
+        user={user}
+        host=""
+        code=""
+        mode="light"
+        setMode={vi.fn()}
+      />,
     )
     expect(screen.queryByText(/feeds can be subscribed/)).toBeNull()
   })
@@ -81,7 +123,13 @@ describe("Settings Component", () => {
     }
 
     const {findByText} = render(
-      <Settings user={user} host="" code="" mode="light" setMode={vi.fn()} />,
+      <AppSettings
+        user={user}
+        host=""
+        code=""
+        mode="light"
+        setMode={vi.fn()}
+      />,
     )
     expect(await findByText("Cache storage")).toBeTruthy()
 

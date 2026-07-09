@@ -4,13 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - 'browser/**'
-      - '.github/workflows/test-browser.yml'
+      - "browser/**"
+      - ".github/workflows/test-browser.yml"
   pull_request:
     branches: [main]
     paths:
-      - 'browser/**'
-      - '.github/workflows/test-browser.yml'
+      - "browser/**"
+      - ".github/workflows/test-browser.yml"
 
 jobs:
   test:
@@ -28,8 +28,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-          cache-dependency-path: 'browser/package-lock.json'
+          cache: "npm"
+          cache-dependency-path: "browser/package-lock.json"
 
       - name: Install dependencies
         run: npm ci
