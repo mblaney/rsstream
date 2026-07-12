@@ -229,50 +229,6 @@ app.use(express.static(path.join(dirname, "../browser/build")))
 app.use(router)
 app.use("/private", basicAuth)
 app.use("/private", admin)
-app.listen(3000)
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(dirname, "../browser/build", "index.html"))
-})
-
-// These redirects are required because the browser does local first routing,
-// which is fine except for an initial request or hard refresh, in which case
-// the server needs to respond to the request.
-app.get("/invite", (req, res) => {
-  res.redirect("/?redirect=invite")
-})
-
-app.get("/register", (req, res) => {
-  res.redirect("/?redirect=register")
-})
-
-app.get("/login", (req, res) => {
-  res.redirect("/?redirect=login")
-})
-
-app.get("/settings", (req, res) => {
-  res.redirect("/?redirect=settings")
-})
-
-app.get("/help", (req, res) => {
-  res.redirect("/?redirect=help")
-})
-
-app.get("/validate-email", (req, res) => {
-  res.redirect(
-    `/?redirect=validate-email&code=${req.query.code}&validate=${req.query.validate}`,
-  )
-})
-
-app.get("/reset-password", (req, res) => {
-  res.redirect("/?redirect=reset-password")
-})
-
-app.get("/update-password", (req, res) => {
-  res.redirect(
-    `/?redirect=update-password&username=${req.query.username}&code=${req.query.code}&reset=${req.query.reset}`,
-  )
-})
 
 app.post("/add-feed", async (req, res) => {
   const code = req.body.code
@@ -780,6 +736,13 @@ app.post("/private/update-feed-limit", async (req, res) => {
       res.end()
     })
 })
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(dirname, "../browser/build/index.html"))
+})
+
+const port = process.env.PORT || 3000
+app.listen(port, () => console.log(`rsstream running on port ${port}`))
 
 // Optimized cleanup scheduler to batch operations and limit memory growth
 function scheduleCleanup(twoWeeksAgo) {

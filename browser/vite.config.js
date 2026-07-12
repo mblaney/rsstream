@@ -15,5 +15,20 @@ export default defineConfig({
   ],
   build: {
     outDir: "build",
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("@mblaney/")) return "holster"
+          if (
+            id.includes("@mui/") ||
+            id.includes("@emotion/") ||
+            id.includes("/node_modules/react") ||
+            id.includes("/node_modules/react-dom") ||
+            id.includes("/node_modules/react-router")
+          )
+            return "vendor"
+        },
+      },
+    },
   },
 })
