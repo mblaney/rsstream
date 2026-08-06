@@ -17,6 +17,7 @@ import {
 } from "@mblaney/holster-browser"
 import Display from "./components/Display"
 import DebugPanel from "./components/DebugPanel"
+import FormLayout from "./components/FormLayout"
 import Help from "./components/Help"
 import AppSettings from "./components/AppSettings"
 import {logEvent} from "./utils/debugEvents"
@@ -48,7 +49,7 @@ user.recall()
 const params = new URLSearchParams(window.location.search)
 
 const appBar = {
-  name: "rsstream",
+  name: "RSStream",
   icon: RssFeedIcon,
   iconSx: theme => ({...theme.applyStyles("dark", {color: red[900]})}),
   menuItems: [
@@ -625,74 +626,88 @@ const App = () => {
             <Route
               path="/invite"
               element={
-                <RequestCode
-                  loggedIn={user.is}
+                <FormLayout
+                  loggedIn={!!user.is}
                   mode={mode}
                   setMode={setMode}
                   appBar={appBar}
-                />
+                >
+                  <RequestCode />
+                </FormLayout>
               }
             />
             <Route
               path="/register"
               element={
-                <Register
-                  user={user}
+                <FormLayout
+                  loggedIn={!!user.is}
                   mode={mode}
                   setMode={setMode}
                   appBar={appBar}
-                />
+                >
+                  <Register user={user} />
+                </FormLayout>
               }
             />
             <Route
               path="/login"
               element={
-                <Login
-                  user={user}
-                  host={host}
+                <FormLayout
+                  loggedIn={!!user.is}
                   mode={mode}
                   setMode={setMode}
                   appBar={appBar}
-                />
+                >
+                  <Login user={user} host={host} />
+                </FormLayout>
               }
             />
             <Route
               path="/validate-email"
               element={
-                <ValidateEmail
-                  loggedIn={user.is}
+                <FormLayout
+                  loggedIn={!!user.is}
                   mode={mode}
                   setMode={setMode}
                   appBar={appBar}
-                  code={params.get("code")}
-                  validate={params.get("validate")}
-                />
+                >
+                  <ValidateEmail
+                    code={params.get("code")}
+                    validate={params.get("validate")}
+                  />
+                </FormLayout>
               }
             />
             <Route
               path="/reset-password"
               element={
-                <ResetPassword
-                  loggedIn={user.is}
+                <FormLayout
+                  loggedIn={!!user.is}
                   mode={mode}
                   setMode={setMode}
                   appBar={appBar}
-                />
+                >
+                  <ResetPassword loggedIn={!!user.is} />
+                </FormLayout>
               }
             />
             <Route
               path="/update-password"
               element={
-                <UpdatePassword
-                  user={user}
+                <FormLayout
                   loggedIn={!!user.is}
-                  current={params.get("username")}
-                  code={params.get("code")}
-                  reset={params.get("reset")}
                   mode={mode}
                   setMode={setMode}
                   appBar={appBar}
-                />
+                >
+                  <UpdatePassword
+                    user={user}
+                    loggedIn={!!user.is}
+                    current={params.get("username")}
+                    code={params.get("code")}
+                    reset={params.get("reset")}
+                  />
+                </FormLayout>
               }
             />
             <Route
@@ -748,6 +763,7 @@ const App = () => {
                 )
               }
             />
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>
       </BrowserRouter>
