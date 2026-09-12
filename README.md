@@ -1,7 +1,7 @@
 RSStream is a local first web application that uses a distributed database in
 the browser called [Holster](https://github.com/mblaney/holster). The server
 runs a [Node.js](https://nodejs.org) app that listens for feed updates from
-[Dobrado](https://dobrado.net) and pushes updates to the browser.
+[Dobrado](https://gitlab.com/dobrado/dobrado) and pushes updates to the browser.
 
 ### Server
 
@@ -31,8 +31,8 @@ For production you can start with pm2:
 - `pm2 save`
 
 This will save your environment in `~/.pm2/dump.pm2` so that it can be used on
-restarts, note that you need to run `pm2 unstartup` followed by the `pm2`
-commands listed above if you modify any required environment variables.
+restarts, note that you need to run `pm2 restart app.js --update-env` and
+`pm2 save` if you modify any required environment variables.
 
 #### Private endpoints
 
